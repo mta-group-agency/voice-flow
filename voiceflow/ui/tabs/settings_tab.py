@@ -1,7 +1,9 @@
-from PyQt6.QtCore import Qt
+from __future__ import annotations
+
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QRadioButton, QScrollArea, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from voiceflow.api.claude_client import ClaudeClient
@@ -12,6 +14,8 @@ from voiceflow.ui.widgets.toggle_switch import ToggleSwitch
 
 
 class SettingsTab(QWidget):
+    theme_requested = pyqtSignal(str)
+
     def __init__(self, settings, pipeline, parent=None):
         super().__init__(parent)
         self._settings = settings
@@ -23,7 +27,6 @@ class SettingsTab(QWidget):
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(scroll.Shape.NoFrame)
-
         inner = QWidget()
         scroll.setWidget(inner)
 
@@ -32,25 +35,24 @@ class SettingsTab(QWidget):
         main_layout.addWidget(scroll)
 
         layout = QVBoxLayout(inner)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(28, 22, 28, 24)
         layout.setSpacing(16)
 
-        # ── API Keys ──────────────────────────────────────────────────────
+        # ── API Keys ──────────────────────────────────────────────────────────
         api_group = QGroupBox("API Keys")
         api_form = QFormLayout(api_group)
         api_form.setSpacing(10)
+        api_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         self._gemini_key = QLineEdit()
         self._gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
         self._gemini_key.setPlaceholderText("AIza…")
-        gemini_row = self._key_row(self._gemini_key, self._test_gemini)
-        api_form.addRow("Gemini API Key:", gemini_row)
+        api_form.addRow("Gemini API Key:", self._key_row(self._gemini_key, self._test_gemini))
 
         self._claude_key = QLineEdit()
         self._claude_key.setEchoMode(QLineEdit.EchoMode.Password)
         self._claude_key.setPlaceholderText("sk-ant-…")
-        claude_row = self._key_row(self._claude_key, self._test_claude)
-        api_form.addRow("Claude API Key:", claude_row)
+        api_form.addRow("Claude API Key:", self._key_row(self._claude_key, self._test_claude))
 
         self._turso_url = QLineEdit()
         self._turso_url.setPlaceholderText("libsql://mydb-org.turso.io")
@@ -59,27 +61,30 @@ class SettingsTab(QWidget):
         self._turso_token = QLineEdit()
         self._turso_token.setEchoMode(QLineEdit.EchoMode.Password)
         self._turso_token.setPlaceholderText("auth token…")
-        turso_row = self._key_row(self._turso_token, self._test_turso)
-        api_form.addRow("Turso Auth Token:", turso_row)
+        api_form.addRow("Turso Auth Token:", self._key_row(self._turso_token, self._test_turso))
 
         layout.addWidget(api_group)
 
-        # ── Hotkey ────────────────────────────────────────────────────────
+        # ── Hotkey ────────────────────────────────────────────────────────────
         hotkey_group = QGroupBox("Push-to-Talk Hotkey")
         hotkey_layout = QFormLayout(hotkey_group)
         self._hotkey_widget = HotkeyCaptureWidget()
+        self._hotkey_widget.setObjectName("hotkey_btn")
         self._hotkey_widget.key_captured.connect(self._on_hotkey_captured)
-        hint = QLabel("Click, press your key or combo (e.g. Ctrl+Win), then release to confirm.")
+        hint = QLabel("Click, press your key combo (e.g. Ctrl+Win), then release to confirm.")
         hint.setObjectName("hint")
+        hint.setWordWrap(True)
         hotkey_layout.addRow("Record Key:", self._hotkey_widget)
         hotkey_layout.addRow("", hint)
         layout.addWidget(hotkey_group)
 
-        # ── AI Model ──────────────────────────────────────────────────────
+        # ── AI Model ──────────────────────────────────────────────────────────
         model_group = QGroupBox("AI Text Processing")
         model_layout = QVBoxLayout(model_group)
+        model_layout.setSpacing(10)
 
         provider_row = QHBoxLayout()
+        from PyQt6.QtWidgets import QRadioButton
         self._radio_gemini = QRadioButton("Gemini")
         self._radio_claude = QRadioButton("Claude")
         provider_row.addWidget(QLabel("Provider:"))
@@ -88,46 +93,33 @@ class SettingsTab(QWidget):
         provider_row.addStretch()
         model_layout.addLayout(provider_row)
 
-        gemini_model_row = QFormLayout()
+        gemini_form = QFormLayout()
         self._gemini_model = QComboBox()
         self._gemini_model.setEditable(True)
-        self._gemini_model.addItems([
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-pro",
-        ])
-        gemini_model_row.addRow("Gemini AI model:", self._gemini_model)
-        model_layout.addLayout(gemini_model_row)
+        self._gemini_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"])
+        gemini_form.addRow("Gemini model:", self._gemini_model)
+        model_layout.addLayout(gemini_form)
 
-        claude_model_row = QFormLayout()
+        claude_form = QFormLayout()
         self._claude_model = QComboBox()
         self._claude_model.setEditable(True)
-        self._claude_model.addItems([
-            "claude-sonnet-4-6",
-            "claude-opus-4-7",
-            "claude-haiku-4-5-20251001",
-        ])
-        claude_model_row.addRow("Claude model:", self._claude_model)
-        model_layout.addLayout(claude_model_row)
+        self._claude_model.addItems(["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"])
+        claude_form.addRow("Claude model:", self._claude_model)
+        model_layout.addLayout(claude_form)
 
-        stt_row = QFormLayout()
+        stt_form = QFormLayout()
         self._stt_model = QComboBox()
         self._stt_model.setEditable(True)
-        self._stt_model.addItems([
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-pro",
-        ])
-        stt_hint = QLabel("Used for audio → text. Gemini AI model is used for text processing (grammar, translation).")
+        self._stt_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"])
+        stt_hint = QLabel("Used for audio → text transcription.")
         stt_hint.setObjectName("hint")
-        stt_hint.setWordWrap(True)
-        stt_row.addRow("STT model:", self._stt_model)
-        stt_row.addRow("", stt_hint)
-        model_layout.addLayout(stt_row)
+        stt_form.addRow("STT model:", self._stt_model)
+        stt_form.addRow("", stt_hint)
+        model_layout.addLayout(stt_form)
 
         layout.addWidget(model_group)
 
-        # ── Features ──────────────────────────────────────────────────────
+        # ── Features ──────────────────────────────────────────────────────────
         feat_group = QGroupBox("Features")
         feat_layout = QVBoxLayout(feat_group)
         feat_layout.setSpacing(12)
@@ -135,7 +127,6 @@ class SettingsTab(QWidget):
         self._toggle_fillers = self._feature_row(feat_layout, "Remove Filler Words")
         self._toggle_grammar = self._feature_row(feat_layout, "Fix Grammar & Punctuation")
 
-        # Translate toggle + language
         tr_row = QHBoxLayout()
         tr_label = QLabel("Auto-Translate")
         tr_label.setFixedWidth(200)
@@ -151,7 +142,6 @@ class SettingsTab(QWidget):
         tr_row.addStretch()
         feat_layout.addLayout(tr_row)
 
-        # Tone toggle + value
         tone_row = QHBoxLayout()
         tone_label = QLabel("Tone Adjustment")
         tone_label.setFixedWidth(200)
@@ -169,10 +159,9 @@ class SettingsTab(QWidget):
 
         layout.addWidget(feat_group)
 
-        # ── System ────────────────────────────────────────────────────────
+        # ── System ────────────────────────────────────────────────────────────
         sys_group = QGroupBox("System")
         sys_layout = QVBoxLayout(sys_group)
-
         autostart_row = QHBoxLayout()
         autostart_lbl = QLabel("Start with Windows")
         autostart_lbl.setFixedWidth(200)
@@ -181,28 +170,50 @@ class SettingsTab(QWidget):
         autostart_row.addWidget(autostart_lbl)
         autostart_row.addWidget(self._toggle_autostart)
         autostart_row.addStretch()
-
         if not autostart.is_frozen():
             note = QLabel("(available only in the compiled .exe)")
             note.setObjectName("hint")
             autostart_row.addWidget(note)
             self._toggle_autostart.setEnabled(False)
-
         sys_layout.addLayout(autostart_row)
         layout.addWidget(sys_group)
 
-        # ── Save button ───────────────────────────────────────────────────
+        # ── Appearance ────────────────────────────────────────────────────────
+        appear_group = QGroupBox("Appearance")
+        appear_layout = QVBoxLayout(appear_group)
+        theme_row = QHBoxLayout()
+        theme_row.setSpacing(8)
+        theme_lbl = QLabel("Theme:")
+        theme_lbl.setFixedWidth(60)
+        theme_row.addWidget(theme_lbl)
+
+        self._theme_buttons: dict[str, QPushButton] = {}
+        for key, label in (("dark", "🌙 Dark"), ("light", "☀ Light"), ("system", "System")):
+            btn = QPushButton(label)
+            btn.clicked.connect(lambda _, k=key: self.theme_requested.emit(k))
+            self._theme_buttons[key] = btn
+            theme_row.addWidget(btn)
+        theme_row.addStretch()
+        appear_layout.addLayout(theme_row)
+        layout.addWidget(appear_group)
+
+        self.update_theme_buttons("dark")
+
+        # ── Save ──────────────────────────────────────────────────────────────
         save_btn = QPushButton("Save Settings")
+        save_btn.setObjectName("primary")
         save_btn.setFixedWidth(160)
         save_btn.clicked.connect(self._save)
         layout.addWidget(save_btn)
         layout.addStretch()
 
-        # Connect toggles to greyed-out state
+        # Connect toggles to enabled state
         self._toggle_translate.toggled.connect(lambda on: self._translate_lang.setEnabled(on))
         self._toggle_tone.toggled.connect(lambda on: self._tone_value.setEnabled(on))
         self._radio_gemini.toggled.connect(self._update_model_visibility)
         self._radio_claude.toggled.connect(self._update_model_visibility)
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _key_row(self, field: QLineEdit, test_fn) -> QWidget:
         w = QWidget()
@@ -210,7 +221,7 @@ class SettingsTab(QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(field)
         btn = QPushButton("Test")
-        btn.setObjectName("secondary")
+        btn.setObjectName("ghost")
         btn.setFixedWidth(60)
         btn.clicked.connect(test_fn)
         row.addWidget(btn)
@@ -232,6 +243,13 @@ class SettingsTab(QWidget):
         self._gemini_model.setEnabled(gemini)
         self._claude_model.setEnabled(not gemini)
 
+    def update_theme_buttons(self, active: str):
+        for key, btn in self._theme_buttons.items():
+            btn.setObjectName("theme_active" if key == active else "theme_inactive")
+            btn.style().polish(btn)
+
+    # ── Load / Save ───────────────────────────────────────────────────────────
+
     def _load_values(self):
         cfg = self._settings.config
         self._gemini_key.setText(cfg.gemini_api_key)
@@ -248,7 +266,6 @@ class SettingsTab(QWidget):
         self._gemini_model.setCurrentText(cfg.gemini_ai_model)
         self._claude_model.setCurrentText(cfg.claude_ai_model)
         self._stt_model.setCurrentText(cfg.stt_model)
-
         self._toggle_fillers.setChecked(cfg.remove_fillers)
         self._toggle_grammar.setChecked(cfg.fix_grammar)
         self._toggle_translate.setChecked(cfg.auto_translate)
@@ -256,15 +273,35 @@ class SettingsTab(QWidget):
         idx = self._translate_lang.findText(cfg.translation_language)
         if idx >= 0:
             self._translate_lang.setCurrentIndex(idx)
-
         self._toggle_tone.setChecked(cfg.tone_adjustment_enabled)
         self._tone_value.setEnabled(cfg.tone_adjustment_enabled)
         idx = self._tone_value.findText(cfg.tone_adjustment_value.capitalize())
         if idx >= 0:
             self._tone_value.setCurrentIndex(idx)
-
         self._update_model_visibility()
         self._toggle_autostart.setChecked(autostart.is_enabled())
+
+    def _save(self):
+        s = self._settings
+        s.set("gemini_api_key",  self._gemini_key.text().strip())
+        s.set("claude_api_key",  self._claude_key.text().strip())
+        s.set("turso_db_url",    self._turso_url.text().strip())
+        s.set("turso_auth_token", self._turso_token.text().strip())
+        s.set("hotkey",          self._hotkey_widget.current_key())
+        s.set("ai_model_provider", "claude" if self._radio_claude.isChecked() else "gemini")
+        s.set("gemini_ai_model", self._gemini_model.currentText())
+        s.set("claude_ai_model", self._claude_model.currentText())
+        s.set("stt_model",       self._stt_model.currentText())
+        s.set("remove_fillers",  self._toggle_fillers.isChecked())
+        s.set("fix_grammar",     self._toggle_grammar.isChecked())
+        s.set("auto_translate",  self._toggle_translate.isChecked())
+        s.set("translation_language", self._translate_lang.currentText())
+        s.set("tone_adjustment_enabled", self._toggle_tone.isChecked())
+        s.set("tone_adjustment_value",   self._tone_value.currentText().lower())
+        self._pipeline.reconfigure()
+
+    def _on_hotkey_captured(self, key: str):
+        pass
 
     def _on_autostart_toggled(self, enabled: bool):
         ok = autostart.set_enabled(enabled)
@@ -273,56 +310,35 @@ class SettingsTab(QWidget):
             QMessageBox.warning(self, "Autostart", "Could not update Windows registry.")
             self._toggle_autostart.setChecked(autostart.is_enabled())
 
-    def _save(self):
-        s = self._settings
-        s.set("gemini_api_key", self._gemini_key.text().strip())
-        s.set("claude_api_key", self._claude_key.text().strip())
-        s.set("turso_db_url", self._turso_url.text().strip())
-        s.set("turso_auth_token", self._turso_token.text().strip())
-        s.set("hotkey", self._hotkey_widget.current_key())
-        s.set("ai_model_provider", "claude" if self._radio_claude.isChecked() else "gemini")
-        s.set("gemini_ai_model", self._gemini_model.currentText())
-        s.set("claude_ai_model", self._claude_model.currentText())
-        s.set("stt_model", self._stt_model.currentText())
-        s.set("remove_fillers", self._toggle_fillers.isChecked())
-        s.set("fix_grammar", self._toggle_grammar.isChecked())
-        s.set("auto_translate", self._toggle_translate.isChecked())
-        s.set("translation_language", self._translate_lang.currentText())
-        s.set("tone_adjustment_enabled", self._toggle_tone.isChecked())
-        s.set("tone_adjustment_value", self._tone_value.currentText().lower())
-        self._pipeline.reconfigure()
-
-    def _on_hotkey_captured(self, key: str):
-        pass  # saved on _save()
+    # ── API tests ─────────────────────────────────────────────────────────────
 
     def _test_gemini(self):
-        key = self._gemini_key.text().strip()
-        model = self._gemini_model.currentText()
-        client = GeminiClient(key, model, model)
-        ok = client.test_connection()
         from PyQt6.QtWidgets import QMessageBox
+        ok = GeminiClient(
+            self._gemini_key.text().strip(),
+            self._gemini_model.currentText(),
+            self._gemini_model.currentText(),
+        ).test_connection()
         if ok:
             QMessageBox.information(self, "Gemini", "Connection successful!")
         else:
             QMessageBox.warning(self, "Gemini", "Connection failed. Check your API key.")
 
     def _test_claude(self):
-        key = self._claude_key.text().strip()
-        model = self._claude_model.currentText()
-        client = ClaudeClient(key, model)
-        ok = client.test_connection()
         from PyQt6.QtWidgets import QMessageBox
+        ok = ClaudeClient(
+            self._claude_key.text().strip(),
+            self._claude_model.currentText(),
+        ).test_connection()
         if ok:
             QMessageBox.information(self, "Claude", "Connection successful!")
         else:
             QMessageBox.warning(self, "Claude", "Connection failed. Check your API key.")
 
     def _test_turso(self):
-        url = self._turso_url.text().strip()
-        token = self._turso_token.text().strip()
-        from voiceflow.storage.history_db import HistoryDB
-        db = HistoryDB(url, token)
         from PyQt6.QtWidgets import QMessageBox
+        from voiceflow.storage.history_db import HistoryDB
+        db = HistoryDB(self._turso_url.text().strip(), self._turso_token.text().strip())
         if db.is_enabled:
             QMessageBox.information(self, "Turso", "Schema initialized successfully!")
         else:

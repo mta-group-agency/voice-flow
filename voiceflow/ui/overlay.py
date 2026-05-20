@@ -9,12 +9,10 @@ from PyQt6.QtCore import QPoint, QPropertyAnimation, Qt, QTimer, pyqtProperty
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from voiceflow.ui.styles import OVERLAY_STYLESHEET
+from voiceflow.ui import theme
 
 
 class _LevelMeter(QWidget):
-    """5-bar equalizer driven by live microphone amplitude."""
-
     BAR_COUNT = 5
 
     def __init__(self, parent=None):
@@ -22,12 +20,11 @@ class _LevelMeter(QWidget):
         self.setFixedSize(42, 30)
         self._bars = [0.0] * self.BAR_COUNT
         self._decay = QTimer(self)
-        self._decay.setInterval(40)  # 25 fps decay
+        self._decay.setInterval(40)
         self._decay.timeout.connect(self._tick)
         self._decay.start()
 
     def set_level(self, level: float):
-        # Power curve: makes quiet speech fill more of the bar visually
         boosted = min(1.0, (level ** 0.4) * 1.1)
         for i in range(self.BAR_COUNT):
             target = min(1.0, boosted * random.uniform(0.55, 1.0))
@@ -49,15 +46,16 @@ class _LevelMeter(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
 
+        t = theme.get_tokens()
         h = self.height()
         bar_w = 5
         gap = (self.width() - self.BAR_COUNT * bar_w) // (self.BAR_COUNT - 1)
 
         for i, lvl in enumerate(self._bars):
-            bh = max(6, int(lvl * h))  # minimum 6px so bars are always visible
+            bh = max(6, int(lvl * h))
             x = i * (bar_w + gap)
             y = h - bh
-            color = QColor("#4ADE80") if lvl > 0.08 else QColor("#374151")
+            color = QColor(t["success"]) if lvl > 0.08 else QColor(t["text_4"])
             painter.setBrush(color)
             painter.drawRoundedRect(x, y, bar_w, bh, 2, 2)
 
@@ -67,7 +65,6 @@ class _PulsingDot(QWidget):
         super().__init__(parent)
         self.setFixedSize(16, 16)
         self._opacity = 1.0
-        self._color = QColor("#FFDD00")
         self._anim = QPropertyAnimation(self, b"dot_opacity")
         self._anim.setDuration(700)
         self._anim.setStartValue(1.0)
@@ -87,7 +84,8 @@ class _PulsingDot(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor(self._color)
+        t = theme.get_tokens()
+        color = QColor(t["accent"])
         color.setAlphaF(self._opacity)
         painter.setBrush(color)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -104,18 +102,18 @@ class RecordingOverlay(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setObjectName("overlay_root")
-        self.setStyleSheet(OVERLAY_STYLESHEET)
-        self.setFixedSize(230, 52)
+        self.setFixedSize(240, 54)
+        self._apply_stylesheet()
 
         self._meter = _LevelMeter(self)
-        self._dot = _PulsingDot(self)
+        self._dot   = _PulsingDot(self)
         self._label = QLabel("Recording", self)
         self._label.setObjectName("overlay_text")
         self._timer_label = QLabel("0:00", self)
         self._timer_label.setObjectName("overlay_timer")
 
         row = QHBoxLayout()
-        row.setContentsMargins(12, 0, 12, 0)
+        row.setContentsMargins(14, 0, 14, 0)
         row.setSpacing(10)
         row.addWidget(self._meter)
         row.addWidget(self._dot)
@@ -135,9 +133,16 @@ class RecordingOverlay(QWidget):
         self._drag_pos: QPoint | None = None
         self._position_bottom_right()
 
-        # Start hidden
         self._meter.setVisible(False)
         self._dot.setVisible(False)
+
+    def _apply_stylesheet(self):
+        from voiceflow.ui.theme import build_overlay_stylesheet, get_active
+        self.setStyleSheet(build_overlay_stylesheet(get_active()))
+
+    def set_theme(self, theme_name: str):
+        self._apply_stylesheet()
+        self.update()
 
     def _position_bottom_right(self):
         from PyQt6.QtWidgets import QApplication
@@ -190,6 +195,18 @@ class RecordingOverlay(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QColor(24, 24, 27, 220))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(0, 0, self.width(), self.height(), 10, 10)
+        t = theme.get_tokens()
+
+        # Warm dark background
+        bg = QColor(t["bg_titlebar"])
+        bg.setAlpha(230)
+        painter.setBrush(bg)
+
+        # Subtle accent border
+        accent = QColor(t["accent"])
+        accent.setAlpha(40)
+        pen = QPen(accent)
+        pen.setWidth(1)
+        painter.setPen(pen)
+
+        painter.drawRoundedRect(0, 0, self.width() - 1, self.height() - 1, 12, 12)

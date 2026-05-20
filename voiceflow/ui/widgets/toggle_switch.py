@@ -6,6 +6,8 @@ from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, Qt, pyqtProperty, pyq
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import QWidget
 
+from voiceflow.ui import theme
+
 
 class ToggleSwitch(QWidget):
     toggled = pyqtSignal(bool)
@@ -58,16 +60,15 @@ class ToggleSwitch(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        t = theme.get_tokens()
 
-        # Track
-        track_color = QColor("#000000") if self._checked else QColor("#BBBBBB")
-        painter.setBrush(track_color)
+        track = QColor(t["accent"] if self._checked else t["border"])
+        painter.setBrush(track)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(0, 4, self._W, self._H - 8, 9, 9)
 
-        # Handle
         h_size = self._H - 6
-        painter.setBrush(QColor("#FFDD00") if self._checked else QColor("#FFFFFF"))
-        from PyQt6.QtGui import QPen
-        painter.setPen(QPen(QColor("#000000"), 1))
+        handle = QColor(t["on_accent"] if self._checked else t["text_1"])
+        painter.setBrush(handle)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(int(self._handle_x), 3, h_size, h_size)
