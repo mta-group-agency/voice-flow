@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -200,12 +200,24 @@ class SettingsTab(QWidget):
         self.update_theme_buttons("dark")
 
         # ── Save ──────────────────────────────────────────────────────────────
+        save_row = QHBoxLayout()
         save_btn = QPushButton("Save Settings")
         save_btn.setObjectName("primary")
         save_btn.setFixedWidth(160)
         save_btn.clicked.connect(self._save)
-        layout.addWidget(save_btn)
+        save_row.addWidget(save_btn)
+
+        self._saved_lbl = QLabel("Settings saved")
+        self._saved_lbl.setObjectName("hint")
+        self._saved_lbl.setVisible(False)
+        save_row.addWidget(self._saved_lbl)
+        save_row.addStretch()
+        layout.addLayout(save_row)
         layout.addStretch()
+
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.timeout.connect(lambda: self._saved_lbl.setVisible(False))
 
         # Connect toggles to enabled state
         self._toggle_translate.toggled.connect(lambda on: self._translate_lang.setEnabled(on))
@@ -299,6 +311,9 @@ class SettingsTab(QWidget):
         s.set("tone_adjustment_enabled", self._toggle_tone.isChecked())
         s.set("tone_adjustment_value",   self._tone_value.currentText().lower())
         self._pipeline.reconfigure()
+
+        self._saved_lbl.setVisible(True)
+        self._save_timer.start(3000)
 
     def _on_hotkey_captured(self, key: str):
         pass
