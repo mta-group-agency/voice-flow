@@ -29,8 +29,8 @@ class VoiceFlowApp:
         self._overlay = RecordingOverlay()
         self._tray = TrayManager(qt_app, self._window, self._pipeline)
 
+        self._window.show()
         if cfg.first_run:
-            self._window.show()
             self._settings.set("first_run", False)
 
         self._pipeline.state_changed.connect(self._on_state_changed)

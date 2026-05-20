@@ -1,12 +1,36 @@
+import ctypes
+import os
 import sys
 
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
 import voiceflow.core.logger as logger
 from voiceflow.app import VoiceFlowApp
 
 
+def _ensure_single_instance():
+    kernel32 = ctypes.windll.kernel32
+    mutex = kernel32.CreateMutexW(None, False, "VoiceFlow_SingleInstance_Mutex")
+    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "VoiceFlow is already running.\nCheck the system tray.",
+            "VoiceFlow",
+            0x40,  # MB_ICONINFORMATION
+        )
+        sys.exit(0)
+    return mutex
+
+
+def _app_icon() -> QIcon:
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return QIcon(os.path.join(base, "assets", "icon.ico"))
+
+
 def main():
+    _mutex = _ensure_single_instance()
+
     log_file = logger.setup()
     log = logger.get("main")
     log.info("VoiceFlow starting — log: %s", log_file)
@@ -14,6 +38,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("VoiceFlow")
     app.setApplicationVersion("1.0.0")
+    app.setWindowIcon(_app_icon())
 
     try:
         vf = VoiceFlowApp(app)

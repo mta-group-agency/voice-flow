@@ -7,7 +7,7 @@ from __future__ import annotations
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QColor, QLinearGradient, QPainter
 from PyQt6.QtWidgets import (
-    QButtonGroup, QHBoxLayout, QLabel,
+    QButtonGroup, QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
     QMainWindow, QPushButton, QSizeGrip, QStackedWidget,
     QVBoxLayout, QWidget,
 )
@@ -244,10 +244,26 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VoiceFlow")
         self.setMinimumSize(920, 680)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         central = QWidget()
+        central.setStyleSheet("background: transparent;")
         self.setCentralWidget(central)
-        root = QVBoxLayout(central)
+
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(0)
+
+        frame = QFrame()
+        frame.setObjectName("app_frame")
+        shadow = QGraphicsDropShadowEffect(frame)
+        shadow.setBlurRadius(24)
+        shadow.setColor(QColor(0, 0, 0, 140))
+        shadow.setOffset(0, 4)
+        frame.setGraphicsEffect(shadow)
+        outer.addWidget(frame)
+
+        root = QVBoxLayout(frame)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
