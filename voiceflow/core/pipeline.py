@@ -171,13 +171,36 @@ class Pipeline(QObject):
         self._last_wav = wav_bytes
         self._last_duration = duration
 
-        gemini = self._make_gemini()
-        worker = _Worker(
-            gemini.transcribe,
-            wav_bytes,
-            on_result=self._on_transcription_done,
-            on_error=self._on_error,
+        cfg = self._settings.config
+        _, proc_config = self._build_processing_config("")
+        any_feature = bool(
+            proc_config.remove_fillers or proc_config.fix_grammar
+            or proc_config.translation_target or proc_config.tone
         )
+        # Use a single combined call when Gemini handles both STT and post-processing
+        use_combined = any_feature and not (cfg.ai_model_provider == "claude" and cfg.claude_api_key)
+
+        gemini = self._make_gemini()
+        audio_s = duration
+
+        if use_combined:
+            def _combined():
+                final = gemini.transcribe_and_process(wav_bytes, proc_config)
+                cost = GeminiClient.estimate_cost(audio_s, len(final))
+                return final, cost
+
+            worker = _Worker(
+                _combined,
+                on_result=lambda r: self._on_ai_done(raw_text=r[0], final_text=r[0], cost=r[1]),
+                on_error=self._on_error,
+            )
+        else:
+            worker = _Worker(
+                gemini.transcribe,
+                wav_bytes,
+                on_result=self._on_transcription_done,
+                on_error=self._on_error,
+            )
         self._pool.start(worker)
 
     def _on_transcription_done(self, raw_text: str):
