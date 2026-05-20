@@ -320,12 +320,6 @@ QLabel#greeting {{
     color: {t['text_1']}; font-size: 18px; font-weight: 600; background: transparent;
 }}
 
-/* ── App frame (shadow host) ─────────────── */
-QFrame#app_frame {{
-    background-color: {t['bg_app']};
-    border: 1px solid rgba(0,0,0,102);
-}}
-
 /* ── Frames / Cards ──────────────────────── */
 QFrame#card {{
     background: {t['surface_1']}; border: 1px solid {t['hairline']}; border-radius: 12px;

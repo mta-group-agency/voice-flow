@@ -5,9 +5,9 @@ Tabs: Home (default) | History | Settings.
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QCloseEvent, QColor, QLinearGradient, QPainter
+from PyQt6.QtGui import QCloseEvent, QColor, QLinearGradient, QPainter, QPen
 from PyQt6.QtWidgets import (
-    QButtonGroup, QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
+    QButtonGroup, QHBoxLayout, QLabel,
     QMainWindow, QPushButton, QSizeGrip, QStackedWidget,
     QVBoxLayout, QWidget,
 )
@@ -233,6 +233,23 @@ class _StatusBar(QWidget):
         )
 
 
+class _BorderOverlay(QWidget):
+    """1px dark border drawn on top of all content, transparent to mouse events."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAutoFillBackground(False)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        pen = QPen(QColor(0, 0, 0, 55))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+
+
 class MainWindow(QMainWindow):
     theme_changed = pyqtSignal(str)
 
@@ -244,26 +261,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VoiceFlow")
         self.setMinimumSize(920, 680)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         central = QWidget()
-        central.setStyleSheet("background: transparent;")
         self.setCentralWidget(central)
 
-        outer = QVBoxLayout(central)
-        outer.setContentsMargins(12, 12, 12, 12)
-        outer.setSpacing(0)
-
-        frame = QFrame()
-        frame.setObjectName("app_frame")
-        shadow = QGraphicsDropShadowEffect(frame)
-        shadow.setBlurRadius(24)
-        shadow.setColor(QColor(0, 0, 0, 140))
-        shadow.setOffset(0, 4)
-        frame.setGraphicsEffect(shadow)
-        outer.addWidget(frame)
-
-        root = QVBoxLayout(frame)
+        root = QVBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
@@ -293,6 +295,8 @@ class MainWindow(QMainWindow):
         pipeline.state_changed.connect(self._on_state_changed)
         pipeline.error_occurred.connect(self._on_error)
         pipeline.history_updated.connect(self._on_history_updated)
+
+        self._border_overlay = _BorderOverlay(central)
 
     def _on_tab_switched(self, idx: int):
         self._stack.setCurrentIndex(idx)
@@ -337,6 +341,32 @@ class MainWindow(QMainWindow):
         if self._stack.currentIndex() == 1:
             self._history_tab.refresh()
         self._home_tab.refresh()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._apply_dwm_shadow()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._border_overlay.setGeometry(self.centralWidget().rect())
+        self._border_overlay.raise_()
+
+    def _apply_dwm_shadow(self):
+        import ctypes
+        from ctypes import Structure, c_int, byref
+
+        class MARGINS(Structure):
+            _fields_ = [
+                ("cxLeftWidth", c_int), ("cxRightWidth", c_int),
+                ("cyTopHeight", c_int), ("cyBottomHeight", c_int),
+            ]
+
+        try:
+            ctypes.windll.dwmapi.DwmExtendFrameIntoClientArea(
+                int(self.winId()), byref(MARGINS(1, 1, 1, 1))
+            )
+        except Exception:
+            pass
 
     def closeEvent(self, event: QCloseEvent):
         event.ignore()
