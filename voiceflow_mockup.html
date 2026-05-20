@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceFlow — Current Design Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #2a2a2e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
+    padding: 32px;
+  }
+
+  .window {
+    width: 740px;
+    min-height: 560px;
+    background: #F8F8FA;
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  }
+
+  /* Title bar */
+  .title-bar {
+    background: #18181B;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px 0 16px;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .title-bar .app-name {
+    color: #FAFAFA;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+  }
+  .title-bar .version {
+    color: #71717A;
+    font-size: 11px;
+  }
+  .title-bar .spacer { flex: 1; }
+  .wnd-btn {
+    width: 32px; height: 32px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #71717A;
+    font-size: 15px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .wnd-btn:hover { background: #3F3F46; color: #FAFAFA; }
+  .wnd-btn.close:hover { background: #DC2626; color: #FFF; }
+
+  /* Tab bar */
+  .tab-bar {
+    background: #FFFFFF;
+    border-bottom: 1px solid #E4E4E7;
+    display: flex;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 11px 28px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #71717A;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    min-width: 80px;
+  }
+  .tab:hover { color: #3F3F46; background: #F4F4F5; }
+  .tab.active {
+    color: #18181B;
+    font-weight: 600;
+    border-bottom: 2px solid #FFDD00;
+  }
+
+  /* Tab content */
+  .tab-content { flex: 1; overflow: hidden; }
+  .tab-pane { display: none; height: 100%; overflow-y: auto; padding: 20px; }
+  .tab-pane.active { display: block; }
+
+  /* Form elements */
+  .group-box {
+    border-top: 1px solid #E4E4E7;
+    margin-top: 24px;
+    padding-top: 14px;
+  }
+  .group-box:first-child { border-top: none; margin-top: 0; }
+  .group-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #A1A1AA;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .form-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 12px;
+  }
+  .form-label {
+    width: 140px;
+    font-size: 13px;
+    color: #3F3F46;
+    flex-shrink: 0;
+  }
+  .form-label.wide { width: 200px; }
+  input[type="text"], input[type="password"], select {
+    flex: 1;
+    border: 1px solid #E4E4E7;
+    border-radius: 6px;
+    padding: 7px 10px;
+    background: #FFFFFF;
+    color: #18181B;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: #FFDD00; border-width: 1.5px; }
+
+  .btn {
+    background: #FFDD00;
+    color: #18181B;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 18px;
+    font-weight: 600;
+    font-size: 13px;
+    min-height: 34px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn:hover { background: #EAB308; }
+  .btn.secondary {
+    background: #F4F4F5;
+    color: #3F3F46;
+    border: 1px solid #E4E4E7;
+  }
+  .btn.secondary:hover { background: #E4E4E7; }
+  .btn.danger {
+    background: #FEE2E2;
+    color: #DC2626;
+    border: 1px solid #FECACA;
+  }
+  .btn.danger:hover { background: #DC2626; color: #FFF; }
+
+  /* Toggle switch */
+  .toggle {
+    width: 36px; height: 20px;
+    background: #E4E4E7;
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  .toggle.on { background: #FFDD00; }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    background: #FFF;
+    border-radius: 50%;
+    top: 3px; left: 3px;
+    transition: left 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .toggle.on::after { left: 19px; }
+
+  /* Radio */
+  .radio-group { display: flex; gap: 20px; align-items: center; }
+  .radio-option { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #3F3F46; cursor: pointer; }
+  .radio-dot {
+    width: 16px; height: 16px;
+    border: 1.5px solid #D4D4D8;
+    border-radius: 50%;
+    background: #FFF;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .radio-dot.checked { background: #FFDD00; border-color: #EAB308; }
+  .radio-dot.checked::after {
+    content: '';
+    width: 6px; height: 6px;
+    background: #18181B;
+    border-radius: 50%;
+  }
+
+  .hint { font-size: 11px; color: #A1A1AA; margin-top: 2px; }
+
+  /* History cards */
+  .card {
+    background: #FFFFFF;
+    border: 1px solid #E4E4E7;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .card-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .card-meta { font-size: 11px; color: #666; }
+  .card-text { font-size: 13px; color: #000; line-height: 1.5; margin-bottom: 8px; }
+  .card-footer { display: flex; justify-content: flex-end; }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat-card {
+    border: 2px solid #000;
+    background: #FFF;
+    padding: 10px 12px;
+    height: 90px;
+  }
+  .stat-title { font-size: 10px; font-weight: 700; color: #666; letter-spacing: 1px; text-transform: uppercase; }
+  .stat-value { font-size: 28px; font-weight: 900; color: #000; line-height: 1.1; margin: 2px 0; }
+  .stat-unit { font-size: 11px; color: #666; }
+
+  .chart-container { background: #FFF; border: 1px solid #E4E4E7; border-radius: 4px; padding: 16px; height: 160px; position: relative; }
+  .chart-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 110px; padding: 0 4px; }
+  .bar { flex: 1; background: #FFDD00; border: 1px solid #000; min-width: 8px; }
+
+  /* Status bar */
+  .status-bar {
+    height: 26px;
+    background: #FFFFFF;
+    border-top: 1px solid #E4E4E7;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 11px;
+    color: #71717A;
+    flex-shrink: 0;
+  }
+  .status-bar .spacer { flex: 1; }
+  .resize-grip {
+    width: 16px; height: 16px;
+    background: linear-gradient(-45deg, #D4D4D8 25%, transparent 25%, transparent 50%, #D4D4D8 50%, #D4D4D8 75%, transparent 75%);
+    background-size: 4px 4px;
+  }
+
+  /* Tab switcher for demo */
+  .demo-controls {
+    text-align: center;
+    margin-bottom: 24px;
+    color: #999;
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<div style="width: 740px;">
+  <p class="demo-controls">↓ Current VoiceFlow UI — click tabs to switch</p>
+
+  <div class="window">
+    <!-- Title bar -->
+    <div class="title-bar">
+      <span class="app-name">VOICEFLOW</span>
+      <span class="version">v1.0</span>
+      <div class="spacer"></div>
+      <button class="wnd-btn">−</button>
+      <button class="wnd-btn close">✕</button>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <button class="tab active" onclick="switchTab('settings', this)">Settings</button>
+      <button class="tab" onclick="switchTab('history', this)">History</button>
+      <button class="tab" onclick="switchTab('stats', this)">Stats</button>
+    </div>
+
+    <!-- Tab content -->
+    <div class="tab-content">
+
+      <!-- SETTINGS TAB -->
+      <div class="tab-pane active" id="tab-settings">
+        <div class="group-box">
+          <div class="group-title">API Keys</div>
+          <div class="form-row">
+            <span class="form-label">Gemini API Key:</span>
+            <input type="password" value="AIzaSy••••••••••••••••••" style="flex:1">
+            <button class="btn secondary" style="width:60px">Test</button>
+          </div>
+          <div class="form-row">
+            <span class="form-label">Claude API Key:</span>
+            <input type="password" value="sk-ant-••••••••••••••" style="flex:1">
+            <button class="btn secondary" style="width:60px">Test</button>
+          </div>
+          <div class="form-row">
+            <span class="form-label">Turso DB URL:</span>
+            <input type="text" placeholder="libsql://mydb-org.turso.io" style="flex:1">
+          </div>
+          <div class="form-row">
+            <span class="form-label">Turso Auth Token:</span>
+            <input type="password" placeholder="auth token…" style="flex:1">
+            <button class="btn secondary" style="width:60px">Test</button>
+          </div>
+        </div>
+
+        <div class="group-box">
+          <div class="group-title">Push-to-Talk Hotkey</div>
+          <div class="form-row">
+            <span class="form-label">Record Key:</span>
+            <input type="text" value="Ctrl+Win" style="width:140px; flex:none">
+          </div>
+          <div class="hint">Click, press your key or combo (e.g. Ctrl+Win), then release to confirm.</div>
+        </div>
+
+        <div class="group-box">
+          <div class="group-title">AI Text Processing</div>
+          <div class="form-row">
+            <span class="form-label">Provider:</span>
+            <div class="radio-group">
+              <label class="radio-option">
+                <div class="radio-dot checked"></div> Gemini
+              </label>
+              <label class="radio-option">
+                <div class="radio-dot"></div> Claude
+              </label>
+            </div>
+          </div>
+          <div class="form-row">
+            <span class="form-label">Gemini AI model:</span>
+            <select style="width:220px; flex:none">
+              <option>gemini-2.5-flash</option>
+              <option>gemini-2.5-flash-lite</option>
+              <option>gemini-2.5-pro</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">STT model:</span>
+            <select style="width:220px; flex:none">
+              <option>gemini-2.5-flash</option>
+              <option>gemini-2.5-flash-lite</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="group-box">
+          <div class="group-title">Features</div>
+          <div class="form-row">
+            <span class="form-label wide">Remove Filler Words</span>
+            <div class="toggle on"></div>
+          </div>
+          <div class="form-row">
+            <span class="form-label wide">Fix Grammar &amp; Punctuation</span>
+            <div class="toggle on"></div>
+          </div>
+          <div class="form-row">
+            <span class="form-label wide">Auto-Translate</span>
+            <div class="toggle"></div>
+            <span style="color:#A1A1AA; margin: 0 4px;">→</span>
+            <select style="width:130px; flex:none; opacity:0.5">
+              <option>English</option><option>Polish</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label wide">Tone Adjustment</span>
+            <div class="toggle"></div>
+            <span style="color:#A1A1AA; margin: 0 4px;">→</span>
+            <select style="width:130px; flex:none; opacity:0.5">
+              <option>Formal</option><option>Casual</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="group-box">
+          <div class="group-title">System</div>
+          <div class="form-row">
+            <span class="form-label wide">Start with Windows</span>
+            <div class="toggle"></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <button class="btn" style="width:160px">Save Settings</button>
+        </div>
+      </div>
+
+      <!-- HISTORY TAB -->
+      <div class="tab-pane" id="tab-history">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="font-weight:700; font-size:14px;">Recent Transcriptions</span>
+          <button class="btn danger" style="width:130px">Clear History</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-meta">2026-05-20 14:32:15</span>
+            <span class="card-meta">3.2s</span>
+          </div>
+          <div class="card-text">Please schedule a meeting with the team for Thursday afternoon to discuss the quarterly roadmap.</div>
+          <div class="card-footer"><button class="btn secondary" style="width:70px">Copy</button></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-meta">2026-05-20 13:10:44</span>
+            <span class="card-meta">5.7s</span>
+          </div>
+          <div class="card-text">I need to review the pull request before end of day and make sure the tests are passing correctly.</div>
+          <div class="card-footer"><button class="btn secondary" style="width:70px">Copy</button></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-meta">2026-05-20 11:05:02</span>
+            <span class="card-meta">2.1s</span>
+          </div>
+          <div class="card-text">Can you send me the invoice for last month's services?</div>
+          <div class="card-footer"><button class="btn secondary" style="width:70px">Copy</button></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-meta">2026-05-19 17:48:30</span>
+            <span class="card-meta">8.4s</span>
+          </div>
+          <div class="card-text">The new feature should allow users to export their transcription history as a CSV file with timestamps and duration data included.</div>
+          <div class="card-footer"><button class="btn secondary" style="width:70px">Copy</button></div>
+        </div>
+      </div>
+
+      <!-- STATS TAB -->
+      <div class="tab-pane" id="tab-stats">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+          <span style="font-size:13px;">Month:</span>
+          <select style="width:200px">
+            <option>May 2026</option>
+            <option>April 2026</option>
+          </select>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-title">Sessions</div>
+            <div class="stat-value">47</div>
+            <div class="stat-unit"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Audio Time</div>
+            <div class="stat-value">213</div>
+            <div class="stat-unit">seconds</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Characters</div>
+            <div class="stat-value">8,421</div>
+            <div class="stat-unit"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Est. Cost</div>
+            <div class="stat-value">$0.03</div>
+            <div class="stat-unit">USD</div>
+          </div>
+        </div>
+
+        <div class="chart-title">Sessions per day</div>
+        <div class="chart-container">
+          <div class="bars">
+            <div class="bar" style="height:30%"></div>
+            <div class="bar" style="height:50%"></div>
+            <div class="bar" style="height:20%"></div>
+            <div class="bar" style="height:70%"></div>
+            <div class="bar" style="height:40%"></div>
+            <div class="bar" style="height:60%"></div>
+            <div class="bar" style="height:90%"></div>
+            <div class="bar" style="height:55%"></div>
+            <div class="bar" style="height:35%"></div>
+            <div class="bar" style="height:45%"></div>
+            <div class="bar" style="height:80%"></div>
+            <div class="bar" style="height:25%"></div>
+            <div class="bar" style="height:65%"></div>
+            <div class="bar" style="height:100%"></div>
+            <div class="bar" style="height:75%"></div>
+            <div class="bar" style="height:50%"></div>
+            <div class="bar" style="height:30%"></div>
+            <div class="bar" style="height:40%"></div>
+            <div class="bar" style="height:20%"></div>
+            <div class="bar" style="height:10%"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- tab-content -->
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <span>VoiceFlow running — press the hotkey to dictate</span>
+      <div class="spacer"></div>
+      <div class="resize-grip"></div>
+    </div>
+  </div><!-- window -->
+</div>
+
+<script>
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
