@@ -44,6 +44,7 @@ class AppConfig:
     tone_adjustment_value: str = "formal"
 
     # UI
+    theme: str = "dark"
     show_overlay: bool = True
     overlay_x_pct: int = 95
     overlay_y_pct: int = 90

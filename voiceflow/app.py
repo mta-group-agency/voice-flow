@@ -16,11 +16,12 @@ from voiceflow.ui.tray import TrayManager
 class VoiceFlowApp:
     def __init__(self, qt_app: QApplication):
         self._qt_app = qt_app
-        qt_app.setStyleSheet(vf_theme.build_stylesheet("dark"))
         qt_app.setQuitOnLastWindowClosed(False)
 
         self._settings = SettingsManager()
         cfg = self._settings.config
+
+        qt_app.setStyleSheet(vf_theme.build_stylesheet(cfg.theme))
 
         self._db = HistoryDB(cfg.turso_db_url, cfg.turso_auth_token)
         self._pipeline = Pipeline(self._settings, self._db)
@@ -38,6 +39,9 @@ class VoiceFlowApp:
         self._pipeline.recorder.level_updated.connect(self._overlay.set_level)
 
         self._window.theme_changed.connect(self._on_theme_changed)
+
+        if cfg.theme != "dark":
+            self._window.set_theme(cfg.theme)
 
     def _on_state_changed(self, state: State):
         if state == State.RECORDING:

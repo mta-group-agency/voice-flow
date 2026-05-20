@@ -318,6 +318,7 @@ class MainWindow(QMainWindow):
         theme.set_active(mode)
         self._tab_bar.update_theme_icon(mode)
         self._settings_tab.update_theme_buttons(mode)
+        self._settings.set("theme", mode)
         self.theme_changed.emit(mode)
 
     def _on_state_changed(self, state):
