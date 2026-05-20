@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget,
 )
@@ -18,7 +18,7 @@ class _StatCard(QWidget):
     def __init__(self, title: str, value: str, unit: str = "", parent=None):
         super().__init__(parent)
         self.setFixedHeight(90)
-        self.setStyleSheet("border: 2px solid #000000; background-color: #FFFFFF;")
+        self.setStyleSheet("border: 1px solid #E4E4E7; border-radius: 8px; background-color: #FFFFFF;")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(2)
@@ -72,8 +72,8 @@ class _BarChart(QWidget):
             y = h - 20 - bar_h
 
             painter.setBrush(QColor("#FFDD00"))
-            painter.setPen(QPen(QColor("#000000"), 1))
-            painter.drawRect(x, y, bar_w, bar_h)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(x, y, bar_w, bar_h, 3, 3)
 
             if len(self._data) <= 15:
                 painter.setPen(QColor("#666666"))
@@ -167,6 +167,5 @@ class StatsTab(QWidget):
         self._card_chars.update_value(f"{total_chars:,}")
         self._card_cost.update_value(f"${total_cost:.4f}", "USD")
 
-        # Chart: sessions per day (simulated from total for now)
-        # Real per-day breakdown would need a separate DB query
-        self._chart.set_data([])
+        daily = self._db.get_daily_sessions(year, month)
+        self._chart.set_data(daily)

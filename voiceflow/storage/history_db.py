@@ -128,6 +128,24 @@ class HistoryDB:
             ])
         except Exception:
             pass
+        self._backfill_costs()
+
+    def _backfill_costs(self):
+        # One-time fix: rows stored before cost tracking was added have cost_usd=0.
+        # Re-estimate using the same formula as GeminiClient.estimate_cost.
+        try:
+            self._execute([
+                self._stmt(
+                    """
+                    UPDATE monthly_stats
+                    SET cost_usd = (total_audio_s * 25.0 / 1000000.0)
+                                 + (total_chars / 4.0 * 3.5 / 1000000.0)
+                    WHERE cost_usd = 0 AND sessions > 0
+                    """
+                )
+            ])
+        except Exception:
+            pass
 
     def insert(self, entry: TranscriptionEntry) -> bool:
         if not self._enabled:
@@ -207,6 +225,37 @@ class HistoryDB:
                     ai_provider=str(d.get("ai_provider", "")),
                 ))
             return stats
+        except Exception:
+            return []
+
+    def get_daily_sessions(self, year: int, month: int) -> list[tuple[int, int]]:
+        """Returns [(day, count), ...] sorted by day for the given month."""
+        if not self._enabled:
+            return []
+        try:
+            results = self._execute([
+                self._stmt(
+                    """
+                    SELECT CAST(strftime('%d', created_at) AS INTEGER) AS day,
+                           COUNT(*) AS cnt
+                    FROM transcriptions
+                    WHERE strftime('%Y', created_at) = ?
+                      AND strftime('%m', created_at) = ?
+                    GROUP BY day
+                    ORDER BY day
+                    """,
+                    [str(year), f"{month:02d}"],
+                )
+            ])
+            if not results:
+                return []
+            result = results[0]
+            cols = [c["name"] for c in result.get("cols", [])]
+            rows = []
+            for row in result.get("rows", []):
+                d = {cols[i]: (v.get("value") if isinstance(v, dict) else v) for i, v in enumerate(row)}
+                rows.append((int(d["day"]), int(d["cnt"])))
+            return rows
         except Exception:
             return []
 
