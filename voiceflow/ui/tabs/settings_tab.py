@@ -6,8 +6,12 @@ from PyQt6.QtWidgets import (
     QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
+import threading
+
 from voiceflow.api.claude_client import ClaudeClient
 from voiceflow.api.gemini_client import GeminiClient
+from voiceflow.api.groq_client import GroqClient
+from voiceflow.api.local_whisper_client import LocalWhisperClient, MODEL_INFO
 from voiceflow.core import autostart
 from voiceflow.ui.widgets.hotkey_capture import HotkeyCaptureWidget
 from voiceflow.ui.widgets.toggle_switch import ToggleSwitch
@@ -54,6 +58,11 @@ class SettingsTab(QWidget):
         self._claude_key.setPlaceholderText("sk-ant-…")
         api_form.addRow("Claude API Key:", self._key_row(self._claude_key, self._test_claude))
 
+        self._groq_key = QLineEdit()
+        self._groq_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._groq_key.setPlaceholderText("gsk_…")
+        api_form.addRow("Groq API Key:", self._key_row(self._groq_key, self._test_groq))
+
         self._turso_url = QLineEdit()
         self._turso_url.setPlaceholderText("libsql://mydb-org.turso.io")
         api_form.addRow("Turso DB URL:", self._turso_url)
@@ -78,7 +87,80 @@ class SettingsTab(QWidget):
         hotkey_layout.addRow("", hint)
         layout.addWidget(hotkey_group)
 
-        # ── AI Model ──────────────────────────────────────────────────────────
+        # ── STT Provider ─────────────────────────────────────────────────────
+        stt_group = QGroupBox("Speech-to-Text Provider")
+        stt_layout = QVBoxLayout(stt_group)
+        stt_layout.setSpacing(10)
+
+        stt_top = QHBoxLayout()
+        stt_top.addWidget(QLabel("Provider:"))
+        self._stt_provider_combo = QComboBox()
+        self._stt_provider_combo.addItem("Gemini (domyślny)",  "gemini")
+        self._stt_provider_combo.addItem("Groq — Whisper (~10× szybszy)", "groq")
+        self._stt_provider_combo.addItem("Lokalny — faster-whisper (GPU)", "local")
+        self._stt_provider_combo.setFixedWidth(280)
+        stt_top.addWidget(self._stt_provider_combo)
+        stt_top.addStretch()
+        stt_layout.addLayout(stt_top)
+
+        self._stt_info_lbl = QLabel()
+        self._stt_info_lbl.setObjectName("hint")
+        stt_layout.addWidget(self._stt_info_lbl)
+
+        # Gemini STT sub-section
+        self._gemini_stt_widget = QWidget()
+        gemini_stt_form = QFormLayout(self._gemini_stt_widget)
+        gemini_stt_form.setContentsMargins(0, 0, 0, 0)
+        self._stt_model = QComboBox()
+        self._stt_model.setEditable(True)
+        self._stt_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"])
+        gemini_stt_form.addRow("Model:", self._stt_model)
+        stt_layout.addWidget(self._gemini_stt_widget)
+
+        # Groq STT sub-section
+        self._groq_stt_widget = QWidget()
+        groq_stt_form = QFormLayout(self._groq_stt_widget)
+        groq_stt_form.setContentsMargins(0, 0, 0, 0)
+        self._groq_stt_model = QComboBox()
+        self._groq_stt_model.setEditable(True)
+        self._groq_stt_model.addItems(["whisper-large-v3-turbo", "whisper-large-v3"])
+        groq_stt_form.addRow("Model:", self._groq_stt_model)
+        stt_layout.addWidget(self._groq_stt_widget)
+
+        # Local whisper sub-section
+        self._local_stt_widget = QWidget()
+        local_stt_layout = QVBoxLayout(self._local_stt_widget)
+        local_stt_layout.setContentsMargins(0, 0, 0, 0)
+        local_stt_layout.setSpacing(8)
+        local_model_row = QHBoxLayout()
+        local_model_row.addWidget(QLabel("Rozmiar modelu:"))
+        self._local_model_combo = QComboBox()
+        for name, info in MODEL_INFO.items():
+            self._local_model_combo.addItem(
+                f"{name}  ({info['size_mb']} MB · {info['speed']})", name
+            )
+        self._local_model_combo.setFixedWidth(300)
+        local_model_row.addWidget(self._local_model_combo)
+        local_model_row.addStretch()
+        local_stt_layout.addLayout(local_model_row)
+
+        dl_row = QHBoxLayout()
+        self._download_btn = QPushButton("Pobierz / załaduj model")
+        self._download_btn.setObjectName("ghost")
+        self._download_btn.setFixedWidth(200)
+        self._download_btn.clicked.connect(self._start_model_download)
+        self._download_status = QLabel("")
+        self._download_status.setObjectName("hint")
+        dl_row.addWidget(self._download_btn)
+        dl_row.addWidget(self._download_status)
+        dl_row.addStretch()
+        local_stt_layout.addLayout(dl_row)
+        stt_layout.addWidget(self._local_stt_widget)
+
+        layout.addWidget(stt_group)
+        self._stt_provider_combo.currentIndexChanged.connect(self._on_stt_provider_changed)
+
+        # ── AI Text Processing ────────────────────────────────────────────────
         model_group = QGroupBox("AI Text Processing")
         model_layout = QVBoxLayout(model_group)
         model_layout.setSpacing(10)
@@ -87,9 +169,11 @@ class SettingsTab(QWidget):
         from PyQt6.QtWidgets import QRadioButton
         self._radio_gemini = QRadioButton("Gemini")
         self._radio_claude = QRadioButton("Claude")
+        self._radio_groq_ai = QRadioButton("Groq")
         provider_row.addWidget(QLabel("Provider:"))
         provider_row.addWidget(self._radio_gemini)
         provider_row.addWidget(self._radio_claude)
+        provider_row.addWidget(self._radio_groq_ai)
         provider_row.addStretch()
         model_layout.addLayout(provider_row)
 
@@ -107,15 +191,16 @@ class SettingsTab(QWidget):
         claude_form.addRow("Claude model:", self._claude_model)
         model_layout.addLayout(claude_form)
 
-        stt_form = QFormLayout()
-        self._stt_model = QComboBox()
-        self._stt_model.setEditable(True)
-        self._stt_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"])
-        stt_hint = QLabel("Used for audio → text transcription.")
-        stt_hint.setObjectName("hint")
-        stt_form.addRow("STT model:", self._stt_model)
-        stt_form.addRow("", stt_hint)
-        model_layout.addLayout(stt_form)
+        groq_ai_form = QFormLayout()
+        self._groq_ai_model = QComboBox()
+        self._groq_ai_model.setEditable(True)
+        self._groq_ai_model.addItems([
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+        ])
+        groq_ai_form.addRow("Groq model:", self._groq_ai_model)
+        model_layout.addLayout(groq_ai_form)
 
         layout.addWidget(model_group)
 
@@ -224,6 +309,7 @@ class SettingsTab(QWidget):
         self._toggle_tone.toggled.connect(lambda on: self._tone_value.setEnabled(on))
         self._radio_gemini.toggled.connect(self._update_model_visibility)
         self._radio_claude.toggled.connect(self._update_model_visibility)
+        self._radio_groq_ai.toggled.connect(self._update_model_visibility)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -250,10 +336,52 @@ class SettingsTab(QWidget):
         parent_layout.addLayout(row)
         return toggle
 
+    def _on_stt_provider_changed(self, _index=None):
+        provider = self._stt_provider_combo.currentData()
+        self._gemini_stt_widget.setVisible(provider == "gemini")
+        self._groq_stt_widget.setVisible(provider == "groq")
+        self._local_stt_widget.setVisible(provider == "local")
+        info = {
+            "gemini": "~3–8s • ~$0.003 / 1000 znaków",
+            "groq":   "~0.2s • ~$0.001 / 1000 znaków  (API key wymagany — groq.com, free tier dostępny)",
+            "local":  "~0.15–0.8s (GPU) • bezpłatny • model pobierany przy pierwszym użyciu",
+        }
+        self._stt_info_lbl.setText(info.get(provider, ""))
+        # Update download button status
+        if provider == "local":
+            model = self._local_model_combo.currentData()
+            if LocalWhisperClient.is_loaded(model):
+                self._download_status.setText("Model załadowany ✓")
+
+    def _start_model_download(self):
+        model = self._local_model_combo.currentData()
+        self._download_btn.setEnabled(False)
+        self._download_status.setText("Pobieranie / ładowanie modelu…")
+
+        def _run():
+            try:
+                LocalWhisperClient.preload_model(model)
+                QTimer.singleShot(0, lambda: self._on_download_done(True))
+            except Exception as e:
+                err = str(e)
+                QTimer.singleShot(0, lambda: self._on_download_done(False, err))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_download_done(self, success: bool, error: str = ""):
+        self._download_btn.setEnabled(True)
+        if success:
+            self._download_status.setText("Model gotowy ✓")
+        else:
+            self._download_status.setText(f"Błąd: {error[:60]}")
+
     def _update_model_visibility(self):
         gemini = self._radio_gemini.isChecked()
+        claude = self._radio_claude.isChecked()
+        groq = self._radio_groq_ai.isChecked()
         self._gemini_model.setEnabled(gemini)
-        self._claude_model.setEnabled(not gemini)
+        self._claude_model.setEnabled(claude)
+        self._groq_ai_model.setEnabled(groq)
 
     def update_theme_buttons(self, active: str):
         for key, btn in self._theme_buttons.items():
@@ -266,18 +394,35 @@ class SettingsTab(QWidget):
         cfg = self._settings.config
         self._gemini_key.setText(cfg.gemini_api_key)
         self._claude_key.setText(cfg.claude_api_key)
+        self._groq_key.setText(cfg.groq_api_key)
         self._turso_url.setText(cfg.turso_db_url)
         self._turso_token.setText(cfg.turso_auth_token)
         self._hotkey_widget.set_key(cfg.hotkey)
 
+        # STT provider
+        idx = self._stt_provider_combo.findData(cfg.stt_provider)
+        self._stt_provider_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._stt_model.setCurrentText(cfg.stt_model)
+        self._groq_stt_model.setCurrentText(cfg.groq_stt_model)
+        # Local model combo
+        for i in range(self._local_model_combo.count()):
+            if self._local_model_combo.itemData(i) == cfg.local_whisper_model:
+                self._local_model_combo.setCurrentIndex(i)
+                break
+        self._on_stt_provider_changed()
+
+        # AI provider
         if cfg.ai_model_provider == "claude":
             self._radio_claude.setChecked(True)
+        elif cfg.ai_model_provider == "groq":
+            self._radio_groq_ai.setChecked(True)
         else:
             self._radio_gemini.setChecked(True)
 
         self._gemini_model.setCurrentText(cfg.gemini_ai_model)
         self._claude_model.setCurrentText(cfg.claude_ai_model)
-        self._stt_model.setCurrentText(cfg.stt_model)
+        self._groq_ai_model.setCurrentText(cfg.groq_ai_model)
+
         self._toggle_fillers.setChecked(cfg.remove_fillers)
         self._toggle_grammar.setChecked(cfg.fix_grammar)
         self._toggle_translate.setChecked(cfg.auto_translate)
@@ -297,13 +442,24 @@ class SettingsTab(QWidget):
         s = self._settings
         s.set("gemini_api_key",  self._gemini_key.text().strip())
         s.set("claude_api_key",  self._claude_key.text().strip())
+        s.set("groq_api_key",    self._groq_key.text().strip())
         s.set("turso_db_url",    self._turso_url.text().strip())
         s.set("turso_auth_token", self._turso_token.text().strip())
         s.set("hotkey",          self._hotkey_widget.current_key())
-        s.set("ai_model_provider", "claude" if self._radio_claude.isChecked() else "gemini")
+        s.set("stt_provider",    self._stt_provider_combo.currentData())
+        s.set("stt_model",       self._stt_model.currentText())
+        s.set("groq_stt_model",  self._groq_stt_model.currentText())
+        s.set("local_whisper_model", self._local_model_combo.currentData() or "small")
+        if self._radio_claude.isChecked():
+            ai_provider = "claude"
+        elif self._radio_groq_ai.isChecked():
+            ai_provider = "groq"
+        else:
+            ai_provider = "gemini"
+        s.set("ai_model_provider", ai_provider)
         s.set("gemini_ai_model", self._gemini_model.currentText())
         s.set("claude_ai_model", self._claude_model.currentText())
-        s.set("stt_model",       self._stt_model.currentText())
+        s.set("groq_ai_model",   self._groq_ai_model.currentText())
         s.set("remove_fillers",  self._toggle_fillers.isChecked())
         s.set("fix_grammar",     self._toggle_grammar.isChecked())
         s.set("auto_translate",  self._toggle_translate.isChecked())
@@ -349,6 +505,18 @@ class SettingsTab(QWidget):
             QMessageBox.information(self, "Claude", "Connection successful!")
         else:
             QMessageBox.warning(self, "Claude", "Connection failed. Check your API key.")
+
+    def _test_groq(self):
+        from PyQt6.QtWidgets import QMessageBox
+        ok = GroqClient(
+            self._groq_key.text().strip(),
+            self._groq_stt_model.currentText(),
+            self._groq_ai_model.currentText(),
+        ).test_connection()
+        if ok:
+            QMessageBox.information(self, "Groq", "Connection successful!")
+        else:
+            QMessageBox.warning(self, "Groq", "Connection failed. Check your API key.")
 
     def _test_turso(self):
         from PyQt6.QtWidgets import QMessageBox

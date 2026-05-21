@@ -14,6 +14,8 @@ from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot
 
 from voiceflow.api.claude_client import ClaudeClient
 from voiceflow.api.gemini_client import GeminiClient
+from voiceflow.api.groq_client import GroqClient
+from voiceflow.api.local_whisper_client import LocalWhisperClient
 from voiceflow.config.schema import ProcessingConfig
 from voiceflow.core.audio_recorder import AudioRecorder
 from voiceflow.core.hotkey_manager import HotkeyManager
@@ -122,6 +124,18 @@ class Pipeline(QObject):
         cfg = self._settings.config
         return ClaudeClient(cfg.claude_api_key, cfg.claude_ai_model)
 
+    def _make_groq(self) -> GroqClient:
+        cfg = self._settings.config
+        return GroqClient(cfg.groq_api_key, cfg.groq_stt_model, cfg.groq_ai_model)
+
+    def _make_stt_client(self):
+        cfg = self._settings.config
+        if cfg.stt_provider == "groq" and cfg.groq_api_key:
+            return self._make_groq()
+        if cfg.stt_provider == "local":
+            return LocalWhisperClient(cfg.local_whisper_model)
+        return self._make_gemini()
+
     def _build_processing_config(self, raw_text: str) -> tuple[str, ProcessingConfig]:
         cfg = self._settings.config
         text = raw_text
@@ -177,13 +191,16 @@ class Pipeline(QObject):
             proc_config.remove_fillers or proc_config.fix_grammar
             or proc_config.translation_target or proc_config.tone
         )
-        # Use a single combined call when Gemini handles both STT and post-processing
-        use_combined = any_feature and not (cfg.ai_model_provider == "claude" and cfg.claude_api_key)
-
-        gemini = self._make_gemini()
+        # Combined Gemini call only when both STT and AI processing use Gemini
+        use_combined = (
+            any_feature
+            and cfg.stt_provider == "gemini"
+            and cfg.ai_model_provider == "gemini"
+        )
         audio_s = duration
 
         if use_combined:
+            gemini = self._make_gemini()
             def _combined():
                 final = gemini.transcribe_and_process(wav_bytes, proc_config)
                 cost = GeminiClient.estimate_cost(audio_s, len(final))
@@ -195,8 +212,9 @@ class Pipeline(QObject):
                 on_error=self._on_error,
             )
         else:
+            stt = self._make_stt_client()
             worker = _Worker(
-                gemini.transcribe,
+                stt.transcribe,
                 wav_bytes,
                 on_result=self._on_transcription_done,
                 on_error=self._on_error,
@@ -215,9 +233,14 @@ class Pipeline(QObject):
 
         self._set_state(State.PROCESSING)
 
-        # STT cost is always incurred (Gemini transcription call)
+        # STT cost based on provider
         audio_s = getattr(self, "_last_duration", 0.0)
-        stt_cost = GeminiClient.estimate_cost(audio_s, len(raw_text))
+        if cfg.stt_provider == "groq":
+            stt_cost = GroqClient.estimate_cost(audio_s, 0)
+        elif cfg.stt_provider == "local":
+            stt_cost = 0.0
+        else:
+            stt_cost = GeminiClient.estimate_cost(audio_s, len(raw_text))
 
         if not any_feature:
             self._on_ai_done(raw_text=raw_text, final_text=text, cost=stt_cost)
@@ -225,14 +248,18 @@ class Pipeline(QObject):
 
         if cfg.ai_model_provider == "claude" and cfg.claude_api_key:
             client = self._make_claude()
+        elif cfg.ai_model_provider == "groq" and cfg.groq_api_key:
+            client = self._make_groq()
         else:
             client = self._make_gemini()
 
         def _process():
             result = client.process_text(text, proc_config)
-            # AI processing cost: text tokens only, no audio
             if isinstance(client, GeminiClient):
                 ai_cost = GeminiClient.estimate_cost(0, len(result))
+            elif isinstance(client, GroqClient):
+                # Llama 3.3 70B: $0.59/M input + $0.79/M output tokens
+                ai_cost = (len(text) / 4 * 0.59 + len(result) / 4 * 0.79) / 1_000_000
             else:
                 ai_cost = ClaudeClient.estimate_cost(len(text) // 4, len(result) // 4)
             return result, raw_text, stt_cost + ai_cost

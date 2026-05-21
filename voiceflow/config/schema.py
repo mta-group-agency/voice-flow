@@ -15,18 +15,23 @@ class AppConfig:
     # API Keys
     gemini_api_key: str = ""
     claude_api_key: str = ""
+    groq_api_key: str = ""
 
     # Database (Turso)
     turso_db_url: str = ""
     turso_auth_token: str = ""
 
-    # STT model
-    stt_model: str = "gemini-2.5-flash"
+    # STT provider + models
+    stt_provider: str = "gemini"              # "gemini" | "groq" | "local"
+    stt_model: str = "gemini-2.5-flash"       # Gemini STT model
+    groq_stt_model: str = "whisper-large-v3-turbo"
+    local_whisper_model: str = "small"        # "tiny"|"small"|"medium"|"large-v3"
 
     # AI text processing
-    ai_model_provider: str = "gemini"  # "gemini" | "claude"
+    ai_model_provider: str = "gemini"         # "gemini" | "claude" | "groq"
     gemini_ai_model: str = "gemini-2.5-flash"
     claude_ai_model: str = "claude-sonnet-4-6"
+    groq_ai_model: str = "llama-3.3-70b-versatile"
 
     # Hotkey (pynput key string)
     hotkey: str = "Key.alt_r"
