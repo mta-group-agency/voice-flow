@@ -78,7 +78,7 @@ class SettingsTab(QWidget):
         hotkey_group = QGroupBox("Push-to-Talk Hotkey")
         hotkey_layout = QFormLayout(hotkey_group)
         self._hotkey_widget = HotkeyCaptureWidget()
-        self._hotkey_widget.setObjectName("hotkey_btn")
+        self._hotkey_widget.setObjectName("primary")
         self._hotkey_widget.key_captured.connect(self._on_hotkey_captured)
         hint = QLabel("Click, press your key combo (e.g. Ctrl+Win), then release to confirm.")
         hint.setObjectName("hint")
@@ -95,9 +95,9 @@ class SettingsTab(QWidget):
         stt_top = QHBoxLayout()
         stt_top.addWidget(QLabel("Provider:"))
         self._stt_provider_combo = QComboBox()
-        self._stt_provider_combo.addItem("Gemini (domyślny)",  "gemini")
-        self._stt_provider_combo.addItem("Groq — Whisper (~10× szybszy)", "groq")
-        self._stt_provider_combo.addItem("Lokalny — faster-whisper (GPU)", "local")
+        self._stt_provider_combo.addItem("Gemini (default)", "gemini")
+        self._stt_provider_combo.addItem("Groq — Whisper (~10× faster)", "groq")
+        self._stt_provider_combo.addItem("Local — faster-whisper (NVIDIA GPU)", "local")
         self._stt_provider_combo.setFixedWidth(280)
         stt_top.addWidget(self._stt_provider_combo)
         stt_top.addStretch()
@@ -133,7 +133,7 @@ class SettingsTab(QWidget):
         local_stt_layout.setContentsMargins(0, 0, 0, 0)
         local_stt_layout.setSpacing(8)
         local_model_row = QHBoxLayout()
-        local_model_row.addWidget(QLabel("Rozmiar modelu:"))
+        local_model_row.addWidget(QLabel("Model size:"))
         self._local_model_combo = QComboBox()
         for name, info in MODEL_INFO.items():
             self._local_model_combo.addItem(
@@ -145,12 +145,13 @@ class SettingsTab(QWidget):
         local_stt_layout.addLayout(local_model_row)
 
         dl_row = QHBoxLayout()
-        self._download_btn = QPushButton("Pobierz / załaduj model")
-        self._download_btn.setObjectName("ghost")
-        self._download_btn.setFixedWidth(200)
+        self._download_btn = QPushButton("Download / load model")
+        self._download_btn.setObjectName("primary")
+        self._download_btn.setFixedWidth(180)
         self._download_btn.clicked.connect(self._start_model_download)
         self._download_status = QLabel("")
         self._download_status.setObjectName("hint")
+        self._download_status.setWordWrap(True)
         dl_row.addWidget(self._download_btn)
         dl_row.addWidget(self._download_status)
         dl_row.addStretch()
@@ -359,11 +360,11 @@ class SettingsTab(QWidget):
         return toggle
 
     _INTENSITY_LABELS = {
-        1: "1 — Minimum (zachowaj styl mówienia)",
-        2: "2 — Lekkie poprawki",
-        3: "3 — Zbalansowany",
-        4: "4 — Dokładne czyszczenie",
-        5: "5 — Agresywne polerowanie",
+        1: "1 — Minimum (preserve speaking style)",
+        2: "2 — Light corrections",
+        3: "3 — Balanced",
+        4: "4 — Thorough cleanup",
+        5: "5 — Aggressive polish",
     }
 
     def _on_intensity_changed(self, value: int):
@@ -375,25 +376,61 @@ class SettingsTab(QWidget):
         self._groq_stt_widget.setVisible(provider == "groq")
         self._local_stt_widget.setVisible(provider == "local")
         info = {
-            "gemini": "~3–8s • ~$0.003 / 1000 znaków",
-            "groq":   "~0.2s • ~$0.001 / 1000 znaków  (API key wymagany — groq.com, free tier dostępny)",
-            "local":  "~0.15–0.8s (GPU) • bezpłatny • model pobierany przy pierwszym użyciu",
+            "gemini": "~3–8s • ~$0.003 / 1000 chars",
+            "groq":   "~0.2s • ~$0.001 / 1000 chars  (API key required — groq.com, free tier available)",
+            "local":  (
+                "~0.15–0.8s • free • no internet required\n"
+                "Requires NVIDIA GPU for fast inference. CPU fallback works but is slow (2–5s)."
+            ),
         }
         self._stt_info_lbl.setText(info.get(provider, ""))
-        # Update download button status
         if provider == "local":
             model = self._local_model_combo.currentData()
             if LocalWhisperClient.is_loaded(model):
-                self._download_status.setText("Model załadowany ✓")
+                self._download_status.setText("Model loaded ✓")
 
     def _start_model_download(self):
+        from voiceflow.api.local_whisper_client import MODELS_DIR
         model = self._local_model_combo.currentData()
+        expected_mb = MODEL_INFO.get(model, {}).get("size_mb", 0)
+
         self._download_btn.setEnabled(False)
-        self._download_status.setText("Pobieranie / ładowanie modelu…")
+        self._download_status.setText("Starting…")
+
+        # Progress timer — tracks folder size while files are downloading
+        self._dl_progress_timer = QTimer(self)
+        self._dl_progress_timer.setInterval(1000)
+
+        def _update_progress():
+            try:
+                total_bytes = sum(
+                    f.stat().st_size for f in MODELS_DIR.rglob("*") if f.is_file()
+                )
+                mb = total_bytes / (1024 * 1024)
+                if expected_mb > 0:
+                    pct = min(99, int(mb / expected_mb * 100))
+                    self._download_status.setText(
+                        f"Downloading… {mb:.0f} MB / {expected_mb} MB ({pct}%)"
+                    )
+                else:
+                    self._download_status.setText(f"Downloading… {mb:.0f} MB")
+            except Exception:
+                pass
+
+        self._dl_progress_timer.timeout.connect(_update_progress)
+        self._dl_progress_timer.start()
+
+        def _on_status(status: str):
+            if status == "loading":
+                # Files downloaded — now loading into memory; stop size-tracking timer
+                QTimer.singleShot(0, self._dl_progress_timer.stop)
+                QTimer.singleShot(0, lambda: self._download_status.setText(
+                    "Loading model into GPU… (may take up to 60s on first run)"
+                ))
 
         def _run():
             try:
-                LocalWhisperClient.preload_model(model)
+                LocalWhisperClient.preload_model(model, on_status=_on_status)
                 QTimer.singleShot(0, lambda: self._on_download_done(True))
             except Exception as e:
                 err = str(e)
@@ -402,11 +439,15 @@ class SettingsTab(QWidget):
         threading.Thread(target=_run, daemon=True).start()
 
     def _on_download_done(self, success: bool, error: str = ""):
+        if hasattr(self, "_dl_progress_timer"):
+            self._dl_progress_timer.stop()
         self._download_btn.setEnabled(True)
         if success:
-            self._download_status.setText("Model gotowy ✓")
+            self._download_status.setText(
+                "Model ready ✓  No restart needed — active immediately."
+            )
         else:
-            self._download_status.setText(f"Błąd: {error[:60]}")
+            self._download_status.setText(f"Error: {error[:80]}")
 
     def _update_model_visibility(self):
         gemini = self._radio_gemini.isChecked()

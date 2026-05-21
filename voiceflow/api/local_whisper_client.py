@@ -1,19 +1,19 @@
 """
 Local speech-to-text using faster-whisper (CTranslate2 backend).
-Requires NVIDIA GPU for fast inference (~150-800ms); falls back to CPU (~2-5s).
-Models are downloaded on first use and cached in %APPDATA%/VoiceFlow/models/.
+NVIDIA GPU recommended (~150-800ms); falls back to CPU (~2-5s).
+Models are downloaded from HuggingFace Hub and cached in %APPDATA%/VoiceFlow/models/.
 """
 
 import os
 import tempfile
 from pathlib import Path
+from typing import Callable, Optional
 
 from voiceflow.api.base_client import BaseAIClient
 from voiceflow.config.schema import ProcessingConfig
 
 MODELS_DIR = Path(os.environ.get("APPDATA", Path.home())) / "VoiceFlow" / "models"
 
-# Approximate model info for UI display
 MODEL_INFO = {
     "tiny":     {"size_mb": 39,   "speed": "~0.1s (GPU)"},
     "small":    {"size_mb": 244,  "speed": "~0.15s (GPU)"},
@@ -21,8 +21,15 @@ MODEL_INFO = {
     "large-v3": {"size_mb": 1550, "speed": "~0.80s (GPU)"},
 }
 
-# Class-level cache — model stays loaded for the lifetime of the process
 _model_cache: dict[str, object] = {}
+
+
+def _cuda_available() -> bool:
+    try:
+        import ctranslate2
+        return ctranslate2.cuda.is_available()
+    except Exception:
+        return False
 
 
 class LocalWhisperClient(BaseAIClient):
@@ -30,21 +37,50 @@ class LocalWhisperClient(BaseAIClient):
         self._model_name = model_name
 
     @classmethod
-    def preload_model(cls, model_name: str) -> None:
-        """Download and load the model into memory. Safe to call from any thread."""
+    def preload_model(
+        cls,
+        model_name: str,
+        on_status: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        """Download and load the model. Safe to call from any thread.
+
+        on_status is called with:
+          "downloading"  — network download phase (folder size grows)
+          "loading"      — files present, loading into GPU/CPU memory
+        """
         if model_name in _model_cache:
             return
-        from faster_whisper import WhisperModel
+
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Phase 1 — download files from HuggingFace Hub
+        if on_status:
+            on_status("downloading")
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=f"Systran/faster-whisper-{model_name}",
+                cache_dir=str(MODELS_DIR),
+            )
+        except Exception:
+            pass  # WhisperModel constructor will retry / use what's cached
+
+        # Phase 2 — load into memory (CUDA warmup can take 30-90s first time)
+        if on_status:
+            on_status("loading")
+
+        from faster_whisper import WhisperModel
+        use_cuda = _cuda_available()
+        device = "cuda" if use_cuda else "cpu"
+        compute_type = "float16" if use_cuda else "int8"
         try:
             model = WhisperModel(
                 model_name,
-                device="cuda",
-                compute_type="float16",
+                device=device,
+                compute_type=compute_type,
                 download_root=str(MODELS_DIR),
             )
         except Exception:
-            # Fall back to CPU if CUDA is unavailable
             model = WhisperModel(
                 model_name,
                 device="cpu",
