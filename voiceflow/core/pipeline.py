@@ -94,7 +94,10 @@ class Pipeline(QObject):
         self._hotkey.reconfigure(cfg.hotkey)
         self._recorder.sample_rate = cfg.sample_rate
         self._recorder.device_index = cfg.audio_device_index
-        self._db.reconfigure(cfg.turso_db_url, cfg.turso_auth_token)
+        if cfg.turso_enabled:
+            self._db.reconfigure(cfg.turso_db_url, cfg.turso_auth_token)
+        else:
+            self._db.reconfigure("", "")
 
     def shutdown(self):
         self._hotkey.stop()
@@ -138,6 +141,10 @@ class Pipeline(QObject):
 
     def _build_processing_config(self, raw_text: str) -> tuple[str, ProcessingConfig]:
         cfg = self._settings.config
+
+        if not cfg.ai_processing_enabled:
+            return raw_text, ProcessingConfig()
+
         text = raw_text
 
         # Check for translation voice command
@@ -149,12 +156,14 @@ class Pipeline(QObject):
         elif cfg.auto_translate:
             translation_target = cfg.translation_language
 
+        custom_prompt = cfg.ai_custom_prompt.strip() if cfg.ai_custom_prompt else ""
         proc = ProcessingConfig(
-            remove_fillers=cfg.remove_fillers,
-            fix_grammar=cfg.fix_grammar,
+            remove_fillers=cfg.remove_fillers if not custom_prompt else False,
+            fix_grammar=cfg.fix_grammar if not custom_prompt else False,
             translation_target=translation_target,
             tone=cfg.tone_adjustment_value if cfg.tone_adjustment_enabled else None,
             intensity=cfg.ai_intensity,
+            custom_prompt=custom_prompt,
         )
         return text, proc
 

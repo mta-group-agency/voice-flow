@@ -4,11 +4,12 @@ from typing import Optional
 
 @dataclass
 class ProcessingConfig:
-    remove_fillers: bool = True
-    fix_grammar: bool = True
+    remove_fillers: bool = False
+    fix_grammar: bool = False
     translation_target: Optional[str] = None
     tone: Optional[str] = None
-    intensity: int = 3  # 1=light, 3=balanced, 5=aggressive
+    intensity: int = 3
+    custom_prompt: str = ""
 
 
 @dataclass
@@ -19,6 +20,7 @@ class AppConfig:
     groq_api_key: str = ""
 
     # Database (Turso)
+    turso_enabled: bool = False
     turso_db_url: str = ""
     turso_auth_token: str = ""
 
@@ -42,6 +44,8 @@ class AppConfig:
     sample_rate: int = 16000
 
     # AI feature toggles
+    ai_processing_enabled: bool = True
+    ai_custom_prompt: str = ""
     remove_fillers: bool = True
     fix_grammar: bool = True
     auto_translate: bool = False

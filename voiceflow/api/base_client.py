@@ -40,6 +40,9 @@ class BaseAIClient(ABC):
     }
 
     def _build_system_prompt(self, config: ProcessingConfig) -> str:
+        if config.custom_prompt:
+            return config.custom_prompt
+
         rules = []
         if config.remove_fillers:
             rules.append("- Remove filler words and sounds (yyy, eee, um, uh, hmm, like, you know) without changing meaning.")

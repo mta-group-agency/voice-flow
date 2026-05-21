@@ -23,7 +23,10 @@ class VoiceFlowApp:
 
         qt_app.setStyleSheet(vf_theme.build_stylesheet(cfg.theme))
 
-        self._db = HistoryDB(cfg.turso_db_url, cfg.turso_auth_token)
+        self._db = HistoryDB(
+            cfg.turso_db_url if cfg.turso_enabled else "",
+            cfg.turso_auth_token if cfg.turso_enabled else "",
+        )
         self._pipeline = Pipeline(self._settings, self._db)
 
         self._window = MainWindow(self._settings, self._db, self._pipeline)
