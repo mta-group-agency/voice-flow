@@ -16,6 +16,29 @@ class BaseAIClient(ABC):
     def test_connection(self) -> bool:
         """Return True if the API key is valid and reachable."""
 
+    _INTENSITY_PREAMBLE = {
+        1: (
+            "Make MINIMAL changes. Only fix clear typos and remove the most obvious filler sounds. "
+            "Preserve the speaker's natural voice, rhythm, and phrasing as much as possible."
+        ),
+        2: (
+            "Make light corrections. Fix typos, remove filler words, and fix only necessary grammar errors. "
+            "Keep the original style and sentence structure intact."
+        ),
+        3: (
+            "Apply balanced corrections."
+        ),
+        4: (
+            "Clean up the text thoroughly. Fix all grammar, remove fillers, and improve sentence flow "
+            "where it helps readability, while preserving the original meaning."
+        ),
+        5: (
+            "Polish the text aggressively for maximum clarity and professionalism. Fix all grammar and "
+            "spelling, remove all fillers, restructure sentences for better flow, and elevate the vocabulary "
+            "where appropriate — while preserving the core meaning."
+        ),
+    }
+
     def _build_system_prompt(self, config: ProcessingConfig) -> str:
         rules = []
         if config.remove_fillers:
@@ -30,8 +53,11 @@ class BaseAIClient(ABC):
         if not rules:
             return ""
 
+        intensity = max(1, min(5, config.intensity))
+        preamble = self._INTENSITY_PREAMBLE.get(intensity, self._INTENSITY_PREAMBLE[3])
         return (
-            "You are a text post-processor. Apply ONLY the following transformations:\n"
+            f"You are a text post-processor. {preamble}\n\n"
+            "Apply ONLY the following transformations:\n"
             + "\n".join(rules)
             + "\n\nReturn only the processed text, no explanations, no quotes."
         )

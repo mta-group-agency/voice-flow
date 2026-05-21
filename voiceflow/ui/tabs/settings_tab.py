@@ -212,6 +212,28 @@ class SettingsTab(QWidget):
         self._toggle_fillers = self._feature_row(feat_layout, "Remove Filler Words")
         self._toggle_grammar = self._feature_row(feat_layout, "Fix Grammar & Punctuation")
 
+        # AI intensity slider
+        from PyQt6.QtWidgets import QSlider
+        intensity_row = QHBoxLayout()
+        intensity_lbl = QLabel("AI Intensity")
+        intensity_lbl.setFixedWidth(200)
+        self._intensity_slider = QSlider(Qt.Orientation.Horizontal)
+        self._intensity_slider.setMinimum(1)
+        self._intensity_slider.setMaximum(5)
+        self._intensity_slider.setValue(3)
+        self._intensity_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._intensity_slider.setTickInterval(1)
+        self._intensity_slider.setFixedWidth(130)
+        self._intensity_value_lbl = QLabel("3 — Balanced")
+        self._intensity_value_lbl.setObjectName("hint")
+        self._intensity_slider.valueChanged.connect(self._on_intensity_changed)
+        intensity_row.addWidget(intensity_lbl)
+        intensity_row.addWidget(self._intensity_slider)
+        intensity_row.addSpacing(10)
+        intensity_row.addWidget(self._intensity_value_lbl)
+        intensity_row.addStretch()
+        feat_layout.addLayout(intensity_row)
+
         tr_row = QHBoxLayout()
         tr_label = QLabel("Auto-Translate")
         tr_label.setFixedWidth(200)
@@ -336,6 +358,17 @@ class SettingsTab(QWidget):
         parent_layout.addLayout(row)
         return toggle
 
+    _INTENSITY_LABELS = {
+        1: "1 — Minimum (zachowaj styl mówienia)",
+        2: "2 — Lekkie poprawki",
+        3: "3 — Zbalansowany",
+        4: "4 — Dokładne czyszczenie",
+        5: "5 — Agresywne polerowanie",
+    }
+
+    def _on_intensity_changed(self, value: int):
+        self._intensity_value_lbl.setText(self._INTENSITY_LABELS.get(value, str(value)))
+
     def _on_stt_provider_changed(self, _index=None):
         provider = self._stt_provider_combo.currentData()
         self._gemini_stt_widget.setVisible(provider == "gemini")
@@ -425,6 +458,8 @@ class SettingsTab(QWidget):
 
         self._toggle_fillers.setChecked(cfg.remove_fillers)
         self._toggle_grammar.setChecked(cfg.fix_grammar)
+        self._intensity_slider.setValue(cfg.ai_intensity)
+        self._on_intensity_changed(cfg.ai_intensity)
         self._toggle_translate.setChecked(cfg.auto_translate)
         self._translate_lang.setEnabled(cfg.auto_translate)
         idx = self._translate_lang.findText(cfg.translation_language)
@@ -462,6 +497,7 @@ class SettingsTab(QWidget):
         s.set("groq_ai_model",   self._groq_ai_model.currentText())
         s.set("remove_fillers",  self._toggle_fillers.isChecked())
         s.set("fix_grammar",     self._toggle_grammar.isChecked())
+        s.set("ai_intensity",    self._intensity_slider.value())
         s.set("auto_translate",  self._toggle_translate.isChecked())
         s.set("translation_language", self._translate_lang.currentText())
         s.set("tone_adjustment_enabled", self._toggle_tone.isChecked())

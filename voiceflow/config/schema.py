@@ -8,6 +8,7 @@ class ProcessingConfig:
     fix_grammar: bool = True
     translation_target: Optional[str] = None
     tone: Optional[str] = None
+    intensity: int = 3  # 1=light, 3=balanced, 5=aggressive
 
 
 @dataclass
@@ -47,6 +48,7 @@ class AppConfig:
     translation_language: str = "English"
     tone_adjustment_enabled: bool = False
     tone_adjustment_value: str = "formal"
+    ai_intensity: int = 3  # 1=light touch, 3=balanced, 5=aggressive
 
     # UI
     theme: str = "dark"

@@ -154,6 +154,7 @@ class Pipeline(QObject):
             fix_grammar=cfg.fix_grammar,
             translation_target=translation_target,
             tone=cfg.tone_adjustment_value if cfg.tone_adjustment_enabled else None,
+            intensity=cfg.ai_intensity,
         )
         return text, proc
 
