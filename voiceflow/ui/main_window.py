@@ -5,7 +5,7 @@ Tabs: Home (default) | History | Settings.
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QCloseEvent, QColor, QLinearGradient, QPainter, QPen
+from PyQt6.QtGui import QCloseEvent, QColor, QKeyEvent, QLinearGradient, QPainter, QPen
 from PyQt6.QtWidgets import (
     QButtonGroup, QHBoxLayout, QLabel,
     QMainWindow, QPushButton, QSizeGrip, QStackedWidget,
@@ -256,6 +256,7 @@ class MainWindow(QMainWindow):
     def __init__(self, settings, db, pipeline):
         super().__init__()
         self._settings = settings
+        self._pipeline = pipeline
         self._current_theme = "dark"
 
         self.setWindowTitle("VoiceFlow")
@@ -368,6 +369,12 @@ class MainWindow(QMainWindow):
             )
         except Exception:
             pass
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key.Key_Escape:
+            self._pipeline.cancel()
+        else:
+            super().keyPressEvent(event)
 
     def closeEvent(self, event: QCloseEvent):
         event.ignore()

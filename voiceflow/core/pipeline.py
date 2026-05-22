@@ -10,7 +10,7 @@ import time
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, pyqtSignal, pyqtSlot
 
 from voiceflow.api.claude_client import ClaudeClient
 from voiceflow.api.gemini_client import GeminiClient
@@ -71,6 +71,12 @@ class Pipeline(QObject):
         self._pool = QThreadPool.globalInstance()
         self._recording_start: float = 0.0
         self._last_wav: bytes = b""
+        self._cancel_flag: bool = False
+
+        self._timeout_timer = QTimer(self)
+        self._timeout_timer.setSingleShot(True)
+        self._timeout_timer.setInterval(15_000)
+        self._timeout_timer.timeout.connect(self._on_timeout)
 
         cfg = settings.config
         self._recorder = AudioRecorder(
@@ -88,6 +94,19 @@ class Pipeline(QObject):
         self._hotkey.start()
 
     # ── public API ──────────────────────────────────────────────────────────
+
+    def cancel(self, timed_out: bool = False):
+        if self._state not in (State.TRANSCRIBING, State.PROCESSING):
+            return
+        self._cancel_flag = True
+        self._timeout_timer.stop()
+        self._set_state(State.IDLE)
+        msg = (
+            "Processing timed out after 15s — cancelled automatically."
+            if timed_out else
+            "Cancelled."
+        )
+        self.error_occurred.emit(msg)
 
     def reconfigure(self):
         cfg = self._settings.config
@@ -115,9 +134,18 @@ class Pipeline(QObject):
 
     # ── private helpers ──────────────────────────────────────────────────────
 
+    def _on_timeout(self):
+        self.cancel(timed_out=True)
+
     def _set_state(self, state: State):
         self._state = state
         self.state_changed.emit(state)
+        if state == State.RECORDING:
+            self._cancel_flag = False
+        elif state == State.TRANSCRIBING:
+            self._timeout_timer.start()
+        elif state in (State.IDLE, State.INJECTING):
+            self._timeout_timer.stop()
 
     def _make_gemini(self) -> GeminiClient:
         cfg = self._settings.config
@@ -232,6 +260,8 @@ class Pipeline(QObject):
         self._pool.start(worker)
 
     def _on_transcription_done(self, raw_text: str):
+        if self._cancel_flag:
+            return
         if not raw_text.strip():
             self._set_state(State.IDLE)
             self.error_occurred.emit("Could not transcribe audio. Try speaking more clearly.")
@@ -286,6 +316,8 @@ class Pipeline(QObject):
         self._inject_ready.emit(raw_text, final_text, cost)
 
     def _on_inject_ready(self, raw_text: str, final_text: str, cost: float):
+        if self._cancel_flag:
+            return
         # Runs in main thread — safe to use clipboard, QTimer, etc.
         self._set_state(State.INJECTING)
         self._injector.inject(final_text)
