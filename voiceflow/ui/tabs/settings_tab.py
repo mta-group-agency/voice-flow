@@ -20,6 +20,7 @@ from voiceflow.ui.widgets.toggle_switch import ToggleSwitch
 
 class SettingsTab(QWidget):
     theme_requested = pyqtSignal(str)
+    settings_saved = pyqtSignal()
 
     def __init__(self, settings, pipeline, parent=None):
         super().__init__(parent)
@@ -97,7 +98,7 @@ class SettingsTab(QWidget):
         f = QFormLayout(self._stt_gemini_widget)
         f.setContentsMargins(0, 0, 0, 0)
         self._stt_model = QComboBox()
-        self._stt_model.setEditable(True)
+        self._stt_model.setEditable(False)
         self._stt_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"])
         f.addRow("Model:", self._stt_model)
         self._gemini_key = QLineEdit()
@@ -111,7 +112,7 @@ class SettingsTab(QWidget):
         f = QFormLayout(self._stt_groq_widget)
         f.setContentsMargins(0, 0, 0, 0)
         self._groq_stt_model = QComboBox()
-        self._groq_stt_model.setEditable(True)
+        self._groq_stt_model.setEditable(False)
         self._groq_stt_model.addItems(["whisper-large-v3-turbo", "whisper-large-v3"])
         f.addRow("Model:", self._groq_stt_model)
         self._groq_key = QLineEdit()
@@ -150,6 +151,19 @@ class SettingsTab(QWidget):
         dl_row.addWidget(self._download_status)
         dl_row.addStretch()
         local_vbox.addLayout(dl_row)
+
+        folder_row = QHBoxLayout()
+        open_folder_btn = QPushButton("Open models folder")
+        open_folder_btn.setObjectName("ghost")
+        open_folder_btn.setFixedWidth(160)
+        open_folder_btn.clicked.connect(self._open_models_folder)
+        self._disk_usage_lbl = QLabel()
+        self._disk_usage_lbl.setObjectName("hint")
+        folder_row.addWidget(open_folder_btn)
+        folder_row.addWidget(self._disk_usage_lbl)
+        folder_row.addStretch()
+        local_vbox.addLayout(folder_row)
+        self._refresh_disk_usage()
 
         vbox.addWidget(self._stt_local_widget)
         layout.addWidget(group)
@@ -245,7 +259,7 @@ class SettingsTab(QWidget):
         fg = QFormLayout(self._ai_gemini_widget)
         fg.setContentsMargins(0, 0, 0, 0)
         self._gemini_ai_model = QComboBox()
-        self._gemini_ai_model.setEditable(True)
+        self._gemini_ai_model.setEditable(False)
         self._gemini_ai_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"])
         fg.addRow("Gemini model:", self._gemini_ai_model)
         # Gemini key is shared with STT — show a note pointing to STT section
@@ -258,7 +272,7 @@ class SettingsTab(QWidget):
         fc = QFormLayout(self._ai_claude_widget)
         fc.setContentsMargins(0, 0, 0, 0)
         self._claude_ai_model = QComboBox()
-        self._claude_ai_model.setEditable(True)
+        self._claude_ai_model.setEditable(False)
         self._claude_ai_model.addItems(["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"])
         fc.addRow("Claude model:", self._claude_ai_model)
         self._claude_key = QLineEdit()
@@ -271,7 +285,7 @@ class SettingsTab(QWidget):
         fgr = QFormLayout(self._ai_groq_widget)
         fgr.setContentsMargins(0, 0, 0, 0)
         self._groq_ai_model = QComboBox()
-        self._groq_ai_model.setEditable(True)
+        self._groq_ai_model.setEditable(False)
         self._groq_ai_model.addItems([
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
@@ -458,6 +472,24 @@ class SettingsTab(QWidget):
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
+    def _open_models_folder(self):
+        from voiceflow.api.local_whisper_client import MODELS_DIR
+        import os
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(MODELS_DIR))
+
+    def _refresh_disk_usage(self):
+        from voiceflow.api.local_whisper_client import MODELS_DIR
+        parts = []
+        for name in MODEL_INFO:
+            model_dir = MODELS_DIR / f"models--Systran--faster-whisper-{name}"
+            if model_dir.exists():
+                size_bytes = sum(f.stat().st_size for f in model_dir.rglob("*") if f.is_file())
+                parts.append(f"{name}: {size_bytes / (1024**3):.2f} GB")
+        self._disk_usage_lbl.setText(
+            "Downloaded: " + "  ·  ".join(parts) if parts else "No models downloaded yet."
+        )
+
     def _on_stt_provider_changed(self, _index=None):
         provider = self._stt_provider_combo.currentData()
         self._stt_gemini_widget.setVisible(provider == "gemini")
@@ -499,14 +531,16 @@ class SettingsTab(QWidget):
         self._download_btn.setEnabled(False)
         self._download_status.setText("Starting…")
 
+        model_dir = MODELS_DIR / f"models--Systran--faster-whisper-{model}"
+
         self._dl_progress_timer = QTimer(self)
         self._dl_progress_timer.setInterval(1000)
 
         def _update_progress():
             try:
                 total_bytes = sum(
-                    f.stat().st_size for f in MODELS_DIR.rglob("*") if f.is_file()
-                )
+                    f.stat().st_size for f in model_dir.rglob("*") if f.is_file()
+                ) if model_dir.exists() else 0
                 mb = total_bytes / (1024 * 1024)
                 if expected_mb > 0:
                     pct = min(99, int(mb / expected_mb * 100))
@@ -546,6 +580,7 @@ class SettingsTab(QWidget):
             self._download_status.setText("Model ready ✓  No restart needed — active immediately.")
         else:
             self._download_status.setText(f"Error: {error[:80]}")
+        self._refresh_disk_usage()
 
     def update_theme_buttons(self, active: str):
         for key, btn in self._theme_buttons.items():
@@ -661,6 +696,7 @@ class SettingsTab(QWidget):
         s.set("tone_adjustment_value",   self._tone_value.currentText().lower())
 
         self._pipeline.reconfigure()
+        self.settings_saved.emit()
         self._saved_lbl.setVisible(True)
         self._save_timer.start(3000)
 

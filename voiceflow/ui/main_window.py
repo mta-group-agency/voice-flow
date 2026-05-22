@@ -226,6 +226,15 @@ class _StatusBar(QWidget):
         color = {"recording": t["danger"], "processing": t["accent"]}.get(state, t["success"])
         self._update_dot(color)
 
+    def refresh_model(self, cfg):
+        if cfg.ai_model_provider == "claude":
+            model = cfg.claude_ai_model
+        elif cfg.ai_model_provider == "groq":
+            model = cfg.groq_ai_model
+        else:
+            model = cfg.gemini_ai_model
+        self._model_pill.setText(model)
+
     def _update_dot(self, color: str):
         self._dot.setStyleSheet(
             f"color: {color}; background: transparent;"
@@ -292,6 +301,9 @@ class MainWindow(QMainWindow):
 
         self._home_tab.view_all_clicked.connect(lambda: self._switch_tab(1))
         self._settings_tab.theme_requested.connect(self.set_theme)
+        self._settings_tab.settings_saved.connect(
+            lambda: self._status_bar.refresh_model(settings.config)
+        )
 
         pipeline.state_changed.connect(self._on_state_changed)
         pipeline.error_occurred.connect(self._on_error)
