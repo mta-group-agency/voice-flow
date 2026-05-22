@@ -556,10 +556,14 @@ class SettingsTab(QWidget):
         self._dl_progress_timer.start()
 
         def _on_status(status: str):
-            if status == "loading":
+            if status == "downloading":
+                QTimer.singleShot(0, lambda: self._download_status.setText(
+                    "Downloading / verifying files…"
+                ))
+            elif status == "loading":
                 QTimer.singleShot(0, self._dl_progress_timer.stop)
                 QTimer.singleShot(0, lambda: self._download_status.setText(
-                    "Loading model into GPU… (may take up to 60s on first run)"
+                    "Loading model into GPU… (first time: up to 90s)"
                 ))
 
         def _run():
