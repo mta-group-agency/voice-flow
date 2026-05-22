@@ -493,7 +493,8 @@ class SettingsTab(QWidget):
     def _start_model_download(self):
         from voiceflow.api.local_whisper_client import MODELS_DIR
         model = self._local_model_combo.currentData()
-        expected_mb = MODEL_INFO.get(model, {}).get("size_mb", 0)
+        # disk_mb accounts for HF cache storing blobs + snapshots (~2x model size on Windows)
+        expected_mb = MODEL_INFO.get(model, {}).get("disk_mb", 0)
 
         self._download_btn.setEnabled(False)
         self._download_status.setText("Starting…")

@@ -15,10 +15,10 @@ from voiceflow.config.schema import ProcessingConfig
 MODELS_DIR = Path(os.environ.get("APPDATA", Path.home())) / "VoiceFlow" / "models"
 
 MODEL_INFO = {
-    "tiny":     {"size_mb": 39,   "speed": "~0.1s (GPU)"},
-    "small":    {"size_mb": 244,  "speed": "~0.15s (GPU)"},
-    "medium":   {"size_mb": 769,  "speed": "~0.30s (GPU)"},
-    "large-v3": {"size_mb": 1550, "speed": "~0.80s (GPU)"},
+    "tiny":     {"size_mb": 39,   "disk_mb": 80,   "speed": "~0.1s (GPU)"},
+    "small":    {"size_mb": 244,  "disk_mb": 490,  "speed": "~0.15s (GPU)"},
+    "medium":   {"size_mb": 769,  "disk_mb": 1540, "speed": "~0.30s (GPU)"},
+    "large-v3": {"size_mb": 1550, "disk_mb": 3100, "speed": "~0.80s (GPU)"},
 }
 
 _model_cache: dict[str, object] = {}
