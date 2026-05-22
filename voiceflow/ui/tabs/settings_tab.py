@@ -523,9 +523,9 @@ class SettingsTab(QWidget):
             self._toggle_autostart.setChecked(autostart.is_enabled())
 
     def _start_model_download(self):
+        import queue
         from voiceflow.api.local_whisper_client import MODELS_DIR
         model = self._local_model_combo.currentData()
-        # disk_mb accounts for HF cache storing blobs + snapshots (~2x model size on Windows)
         expected_mb = MODEL_INFO.get(model, {}).get("disk_mb", 0)
 
         self._download_btn.setEnabled(False)
@@ -533,21 +533,48 @@ class SettingsTab(QWidget):
 
         model_dir = MODELS_DIR / f"models--Systran--faster-whisper-{model}"
 
+        # Thread-safe queue: worker puts status strings, timer reads on main thread
+        status_q: queue.SimpleQueue[str] = queue.SimpleQueue()
+
         self._dl_progress_timer = QTimer(self)
-        self._dl_progress_timer.setInterval(1000)
+        self._dl_progress_timer.setInterval(500)
+
+        _in_loading_phase = [False]
 
         def _update_progress():
+            # Drain all pending status messages first
+            while not status_q.empty():
+                s = status_q.get()
+                if s == "downloading":
+                    self._download_status.setText("Downloading / verifying files…")
+                elif s == "loading":
+                    _in_loading_phase[0] = True
+                    self._download_status.setText(
+                        "Loading model into GPU… (first run may take up to 30s)"
+                    )
+                elif s.startswith("done:"):
+                    self._dl_progress_timer.stop()
+                    self._on_download_done(True)
+                    return
+                elif s.startswith("error:"):
+                    self._dl_progress_timer.stop()
+                    self._on_download_done(False, s[6:])
+                    return
+
+            # Show download progress only while downloading
+            if _in_loading_phase[0]:
+                return
             try:
                 total_bytes = sum(
                     f.stat().st_size for f in model_dir.rglob("*") if f.is_file()
                 ) if model_dir.exists() else 0
                 mb = total_bytes / (1024 * 1024)
-                if expected_mb > 0:
+                if expected_mb > 0 and mb > 0:
                     pct = min(99, int(mb / expected_mb * 100))
                     self._download_status.setText(
                         f"Downloading… {mb:.0f} MB / {expected_mb} MB ({pct}%)"
                     )
-                else:
+                elif mb > 0:
                     self._download_status.setText(f"Downloading… {mb:.0f} MB")
             except Exception:
                 pass
@@ -556,23 +583,15 @@ class SettingsTab(QWidget):
         self._dl_progress_timer.start()
 
         def _on_status(status: str):
-            if status == "downloading":
-                QTimer.singleShot(0, lambda: self._download_status.setText(
-                    "Downloading / verifying files…"
-                ))
-            elif status == "loading":
-                QTimer.singleShot(0, self._dl_progress_timer.stop)
-                QTimer.singleShot(0, lambda: self._download_status.setText(
-                    "Loading model into GPU… (first time: up to 90s)"
-                ))
+            # Called from worker thread — only put into queue, never touch Qt objects
+            status_q.put(status)
 
         def _run():
             try:
                 LocalWhisperClient.preload_model(model, on_status=_on_status)
-                QTimer.singleShot(0, lambda: self._on_download_done(True))
+                status_q.put("done:")
             except Exception as e:
-                err = str(e)
-                QTimer.singleShot(0, lambda: self._on_download_done(False, err))
+                status_q.put(f"error:{str(e)[:120]}")
 
         threading.Thread(target=_run, daemon=True).start()
 
