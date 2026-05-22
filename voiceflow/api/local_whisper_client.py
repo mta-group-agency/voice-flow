@@ -5,6 +5,7 @@ Models are downloaded from HuggingFace Hub and cached in %APPDATA%/VoiceFlow/mod
 """
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Callable, Optional
@@ -53,17 +54,29 @@ class LocalWhisperClient(BaseAIClient):
 
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Phase 1 — download files from HuggingFace Hub
+        # Stale .locks files from interrupted downloads cause snapshot_download to hang forever.
+        locks_dir = MODELS_DIR / ".locks"
+        if locks_dir.exists():
+            try:
+                shutil.rmtree(locks_dir)
+            except Exception:
+                pass
+
+        model_dir = MODELS_DIR / f"models--Systran--faster-whisper-{model_name}"
+        already_cached = model_dir.exists()
+
+        # Phase 1 — download files from HuggingFace Hub (skip if already cached)
         if on_status:
             on_status("downloading")
-        try:
-            from huggingface_hub import snapshot_download
-            snapshot_download(
-                repo_id=f"Systran/faster-whisper-{model_name}",
-                cache_dir=str(MODELS_DIR),
-            )
-        except Exception:
-            pass  # WhisperModel constructor will retry / use what's cached
+        if not already_cached:
+            try:
+                from huggingface_hub import snapshot_download
+                snapshot_download(
+                    repo_id=f"Systran/faster-whisper-{model_name}",
+                    cache_dir=str(MODELS_DIR),
+                )
+            except Exception:
+                pass  # WhisperModel constructor will retry / use what's cached
 
         # Phase 2 — load into memory (CUDA warmup can take 30-90s first time)
         if on_status:
