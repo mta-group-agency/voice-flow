@@ -75,7 +75,7 @@ class Pipeline(QObject):
 
         self._timeout_timer = QTimer(self)
         self._timeout_timer.setSingleShot(True)
-        self._timeout_timer.setInterval(15_000)
+        self._timeout_timer.setInterval(30_000)
         self._timeout_timer.timeout.connect(self._on_timeout)
 
         cfg = settings.config
@@ -102,7 +102,7 @@ class Pipeline(QObject):
         self._timeout_timer.stop()
         self._set_state(State.IDLE)
         msg = (
-            "Processing timed out after 15s — cancelled automatically."
+            "Processing timed out after 30s — cancelled automatically."
             if timed_out else
             "Cancelled."
         )
