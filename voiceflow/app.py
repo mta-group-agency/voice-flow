@@ -40,6 +40,7 @@ class VoiceFlowApp:
         self._pipeline.state_changed.connect(self._on_state_changed)
         self._pipeline.error_occurred.connect(self._tray.notify_error)
         self._pipeline.recorder.level_updated.connect(self._overlay.set_level)
+        self._overlay.cancel_requested.connect(self._pipeline.cancel)
 
         self._window.theme_changed.connect(self._on_theme_changed)
 

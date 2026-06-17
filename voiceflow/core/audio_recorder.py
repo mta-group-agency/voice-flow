@@ -22,9 +22,13 @@ class AudioRecorder(QThread):
         self._pa: Optional[pyaudio.PyAudio] = None
 
     def start_recording(self):
+        if self.isRunning():
+            # Previous capture thread still winding down — stop it and give it a
+            # brief moment to exit so we never run two streams or emit a stale result.
+            self._recording = False
+            self.wait(300)
         self._recording = True
-        if not self.isRunning():
-            self.start()
+        self.start()
 
     def stop_recording(self):
         self._recording = False
@@ -63,6 +67,9 @@ class AudioRecorder(QThread):
             self._pa = None
 
         if not frames:
+            # Always signal completion so the pipeline can reset its state even
+            # when nothing was captured (e.g. ultra-fast tap of the hotkey).
+            self.recording_finished.emit(b"")
             return
 
         # encode frames as WAV into memory

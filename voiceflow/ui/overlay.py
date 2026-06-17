@@ -5,9 +5,9 @@ Shows a live level meter (equalizer bars) during recording.
 
 import random
 
-from PyQt6.QtCore import QPoint, QPropertyAnimation, Qt, QTimer, pyqtProperty
+from PyQt6.QtCore import QPoint, QPropertyAnimation, Qt, QTimer, pyqtProperty, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from voiceflow.ui import theme
 
@@ -93,6 +93,8 @@ class _PulsingDot(QWidget):
 
 
 class RecordingOverlay(QWidget):
+    cancel_requested = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(
@@ -111,6 +113,12 @@ class RecordingOverlay(QWidget):
         self._label.setObjectName("overlay_text")
         self._timer_label = QLabel("0:00", self)
         self._timer_label.setObjectName("overlay_timer")
+        self._stop_btn = QPushButton("Stop", self)
+        self._stop_btn.setObjectName("overlay_stop")
+        self._stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._stop_btn.setToolTip("Stop processing (Esc)")
+        self._stop_btn.clicked.connect(self.cancel_requested.emit)
+        self._stop_btn.setVisible(False)
 
         row = QHBoxLayout()
         row.setContentsMargins(14, 0, 14, 0)
@@ -120,6 +128,7 @@ class RecordingOverlay(QWidget):
         row.addWidget(self._label)
         row.addStretch()
         row.addWidget(self._timer_label)
+        row.addWidget(self._stop_btn)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -142,6 +151,9 @@ class RecordingOverlay(QWidget):
 
     def set_theme(self, theme_name: str):
         self._apply_stylesheet()
+        for w in (self._label, self._timer_label, self._stop_btn):
+            w.style().unpolish(w)
+            w.style().polish(w)
         self.update()
 
     def _position_bottom_right(self):
@@ -160,6 +172,8 @@ class RecordingOverlay(QWidget):
         self._label.setText("Recording")
         self._meter.setVisible(True)
         self._dot.setVisible(False)
+        self._stop_btn.setVisible(False)
+        self._timer_label.setVisible(True)
         self._tick.start()
         self.show()
         self.raise_()
@@ -170,9 +184,14 @@ class RecordingOverlay(QWidget):
         self._meter.setVisible(False)
         self._dot.setVisible(True)
         self._timer_label.setText("")
+        self._timer_label.setVisible(False)
+        self._stop_btn.setVisible(True)
+        self.show()
+        self.raise_()
 
     def hide_overlay(self):
         self._tick.stop()
+        self._stop_btn.setVisible(False)
         self.hide()
 
     def _on_tick(self):

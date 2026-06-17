@@ -88,6 +88,7 @@ class Pipeline(QObject):
 
         self._hotkey.hotkey_pressed.connect(self._on_hotkey_pressed)
         self._hotkey.hotkey_released.connect(self._on_hotkey_released)
+        self._hotkey.cancel_pressed.connect(self._on_cancel_pressed)
         self._recorder.recording_finished.connect(self._on_recording_finished)
         self._inject_ready.connect(self._on_inject_ready)
 
@@ -198,6 +199,10 @@ class Pipeline(QObject):
     # ── slots ────────────────────────────────────────────────────────────────
 
     @pyqtSlot()
+    def _on_cancel_pressed(self):
+        self.cancel()
+
+    @pyqtSlot()
     def _on_hotkey_pressed(self):
         if self._state != State.IDLE:
             return
@@ -214,6 +219,11 @@ class Pipeline(QObject):
 
     @pyqtSlot(bytes)
     def _on_recording_finished(self, wav_bytes: bytes):
+        # Ignore a result that arrives outside the transcription window (e.g. a
+        # stale emit from a previous capture thread after a fast double-tap).
+        if self._state != State.TRANSCRIBING:
+            return
+
         duration = time.time() - self._recording_start
         if duration < _MIN_AUDIO_DURATION or not wav_bytes:
             self._set_state(State.IDLE)
@@ -312,6 +322,8 @@ class Pipeline(QObject):
         self._pool.start(worker)
 
     def _on_ai_done(self, raw_text: str, final_text: str, cost: float):
+        if self._cancel_flag:
+            return
         # Called from worker thread — forward to main thread before touching Qt/clipboard
         self._inject_ready.emit(raw_text, final_text, cost)
 

@@ -373,6 +373,9 @@ QToolTip {{
 
 def build_overlay_stylesheet(theme: str = "dark") -> str:
     t = TOKENS.get(theme, DARK)
+    dng12 = _rgba(t["danger"], 0.12)
+    dng30 = _rgba(t["danger"], 0.30)
+    dng22 = _rgba(t["danger"], 0.22)
     return f"""
 QLabel#overlay_text {{
     color: {t['text_1']}; font-weight: 600; font-size: 13px;
@@ -382,4 +385,11 @@ QLabel#overlay_timer {{
     color: {t['accent']}; font-weight: 600; font-size: 12px;
     font-family: "Cascadia Mono", "Consolas", monospace; background: transparent;
 }}
+QPushButton#overlay_stop {{
+    background: {dng12}; color: {t['danger']};
+    border: 1px solid {dng30}; border-radius: 6px;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 12px; min-height: 24px; max-height: 24px;
+}}
+QPushButton#overlay_stop:hover {{ background: {dng22}; border-color: {t['danger']}; }}
 """

@@ -30,6 +30,7 @@ def _key_to_str(key) -> str:
 class HotkeyManager(QObject):
     hotkey_pressed = pyqtSignal()
     hotkey_released = pyqtSignal()
+    cancel_pressed = pyqtSignal()
 
     def __init__(self, hotkey_str: str = "Key.alt_r"):
         super().__init__()
@@ -69,6 +70,9 @@ class HotkeyManager(QObject):
             self._listener = None
 
     def _on_press(self, key):
+        if key == keyboard.Key.esc:
+            self.cancel_pressed.emit()
+            return
         if self._suppressed:
             return
         s = _key_to_str(key)
