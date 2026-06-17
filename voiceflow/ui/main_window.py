@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from voiceflow.__version__ import __version__
 from voiceflow.ui import theme
 from voiceflow.ui.tabs.history_tab import HistoryTab
 from voiceflow.ui.tabs.home_tab import HomeTab
@@ -75,7 +76,7 @@ class _TitleBar(QWidget):
         lay.addWidget(_BrandMark(self))
         name_lbl = QLabel("VoiceFlow")
         name_lbl.setObjectName("title_brand")
-        ver_lbl = QLabel("v1.0")
+        ver_lbl = QLabel(f"v{__version__}")
         ver_lbl.setObjectName("title_version")
         lay.addWidget(name_lbl)
         lay.addSpacing(2)

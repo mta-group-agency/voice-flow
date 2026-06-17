@@ -6,6 +6,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
 import voiceflow.core.logger as logger
+from voiceflow.__version__ import __version__
 from voiceflow.app import VoiceFlowApp
 
 
@@ -37,7 +38,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoiceFlow")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion(__version__)
     app.setWindowIcon(_app_icon())
 
     try:
