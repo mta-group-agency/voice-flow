@@ -35,3 +35,8 @@ config.json
 
 # Logs
 *.log
+
+# Claude Code — lokalne skille i notatki (nie commitować)
+.claude/commands/
+.claude/memory/TODO.md
+.claude/settings.local.json

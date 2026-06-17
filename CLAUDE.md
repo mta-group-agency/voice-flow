@@ -1,13 +1,26 @@
 # VoiceFlow — instrukcje dla Claude Code
 
+## Cel, odbiorca, scope
+
+- **Czym jest**: desktopowy klon Wispr Flow na Windows — narzędzie STT. Hotkey →
+  nagrywanie → transkrypcja → opcjonalny AI post-processing → wklejenie tekstu.
+- **Dla kogo**: przede wszystkim dla autora (narzędzie osobiste); przy okazji dzielone
+  z kolegami przez release'y w organizacyjnym repo GitHub — każdy na własnych kluczach API.
+- **Cele nadrzędne**: stabilność (zero crashy) + koszt ≈ 0 zł (darmowe tory domyślne).
+- **Scope**: Windows. **Poza scope (świadomie)**: macOS, Linux, web, mobile, i18n UI.
+- Szerszy kontekst i plan: `.claude/memory/` (`produkt-kontekst.md`, `plan-rozwoju.md`, `TODO.md`).
+
 ## Stack technologiczny
 
 - **Język**: Python 3.x
 - **GUI**: PyQt6 (frameless window, system tray, overlay)
 - **Audio**: PyAudio (PCM 16 kHz mono)
-- **STT**: Google Gemini (`gemini-2.5-flash`)
-- **AI post-processing**: Anthropic Claude (`claude-sonnet-4-6`) lub Gemini
-- **Baza danych**: Turso (libSQL, HTTP API)
+- **STT** (wybór dostawcy): **Groq** (`whisper-large-v3-turbo`) — domyślny/rekomendowany
+  tor (najszybszy, darmowy tier); **Gemini** (`gemini-2.5-flash`); **lokalny Whisper**
+  (faster-whisper) — fallback offline, 0 zł, bez kluczy.
+- **AI post-processing** (wybór dostawcy): Groq (`llama-3.3-70b-versatile`) /
+  Gemini (`gemini-2.5-flash`) / Anthropic Claude (`claude-sonnet-4-6`).
+- **Baza danych**: Turso (libSQL, HTTP API) — opcjonalna (historia transkrypcji).
 - **Hotkey**: pynput (globalny nasłuch, domyślnie prawy Alt)
 - **Packaging**: PyInstaller → `dist/VoiceFlow.exe`
 
@@ -17,15 +30,19 @@
 VoiceFlow/
 ├── main.py                  # punkt wejścia — QApplication + VoiceFlowApp
 ├── voiceflow.spec           # konfiguracja PyInstaller
+├── generate_icons.py        # generowanie ikon (.ico/.png) z assets
 ├── requirements.txt
-├── assets/                  # ikony (.ico, .png) — bundlowane do .exe
+├── assets/                  # ikony (icon.ico, icon.png, icon_rec/proc.png) — bundlowane do .exe
+├── .claude/memory/          # kontekst produktu, plan rozwoju, TODO (backlog pomysłów)
 ├── voiceflow/
 │   ├── app.py               # bootstrap: inicjalizacja wszystkich komponentów
-│   ├── api/                 # klienty AI (claude_client.py, gemini_client.py)
-│   ├── config/              # AppConfig (schema.py) + zapis do %APPDATA%/VoiceFlow/config.json
-│   ├── core/                # pipeline.py (maszyna stanów), audio, hotkey, text injector
-│   ├── storage/             # history_db.py (Turso)
-│   └── ui/                  # main_window, tray, overlay, tabs/, widgets/
+│   ├── api/                 # base_client, claude_client, gemini_client, groq_client, local_whisper_client
+│   ├── config/              # schema.py (AppConfig) + settings_manager.py → %APPDATA%/VoiceFlow/config.json
+│   ├── core/                # pipeline.py (maszyna stanów), audio_recorder, hotkey_manager,
+│   │                        #   text_injector, autostart, logger
+│   ├── storage/             # history_db.py (Turso, opcjonalna)
+│   └── ui/                  # main_window, tray, overlay, styles, theme,
+│                            #   tabs/ (home, history, stats, settings), widgets/ (toggle_switch, hotkey_capture)
 ├── build/                   # artefakty PyInstaller (nie commitować)
 └── dist/VoiceFlow.exe       # finalny plik wykonywalny
 ```
@@ -36,7 +53,7 @@ VoiceFlow/
 IDLE → RECORDING → TRANSCRIBING → PROCESSING → INJECTING → IDLE
 ```
 
-Każda zmiana kodu musi być spójna z tym przepływem. Hotkey (prawy Alt) wyzwala nagrywanie; audio → Gemini STT → opcjonalny AI post-processing → wklejenie tekstu przez schowek + Ctrl+V.
+Każda zmiana kodu musi być spójna z tym przepływem. Hotkey (prawy Alt) wyzwala nagrywanie; audio → STT (Groq / Gemini / lokalny Whisper) → opcjonalny AI post-processing → wklejenie tekstu przez schowek + Ctrl+V. Gdy STT i AI to oba Gemini, pipeline robi jedno połączone wywołanie (`transcribe_and_process`). Timeout przetwarzania: 30 s (auto-cancel).
 
 ## Kluczowe zasady
 
