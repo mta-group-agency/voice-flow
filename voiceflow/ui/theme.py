@@ -361,6 +361,26 @@ QGroupBox::title {{
     color: {t['text_3']}; font-size: 10px; font-weight: 600;
 }}
 
+/* ── Update banner ───────────────────────── */
+QFrame#update_banner {{
+    background: {acc10}; border: 1px solid {acc35}; border-radius: 10px;
+}}
+QLabel#update_text {{
+    color: {t['text_1']}; font-size: 13px; font-weight: 600; background: transparent;
+}}
+QLabel#update_sub {{
+    color: {t['text_3']}; font-size: 11px;
+    font-family: "Cascadia Mono", "Consolas", monospace; background: transparent;
+}}
+QProgressBar#update_progress {{
+    background: {t['surface_1']}; border: 1px solid {t['hairline']};
+    border-radius: 6px; min-height: 18px; max-height: 18px;
+    text-align: center; color: {t['text_2']}; font-size: 11px;
+}}
+QProgressBar#update_progress::chunk {{
+    background: {t['accent']}; border-radius: 5px;
+}}
+
 /* ── Misc ────────────────────────────────── */
 QMessageBox {{ background: {t['surface_1']}; }}
 QToolTip {{

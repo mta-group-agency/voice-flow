@@ -17,6 +17,7 @@ from voiceflow.ui import theme
 from voiceflow.ui.tabs.history_tab import HistoryTab
 from voiceflow.ui.tabs.home_tab import HomeTab
 from voiceflow.ui.tabs.settings_tab import SettingsTab
+from voiceflow.ui.update_banner import UpdateBanner
 
 
 class _BrandMark(QWidget):
@@ -288,6 +289,14 @@ class MainWindow(QMainWindow):
         self._tab_bar.theme_toggled.connect(self._toggle_theme)
         root.addWidget(self._tab_bar)
 
+        self._update_banner = UpdateBanner(self)
+        banner_wrap = QWidget()
+        bw_lay = QVBoxLayout(banner_wrap)
+        bw_lay.setContentsMargins(28, 14, 28, 0)
+        bw_lay.setSpacing(0)
+        bw_lay.addWidget(self._update_banner)
+        root.addWidget(banner_wrap)
+
         self._stack = QStackedWidget()
         self._home_tab = HomeTab(db)
         self._history_tab = HistoryTab(db)
@@ -311,6 +320,18 @@ class MainWindow(QMainWindow):
         pipeline.history_updated.connect(self._on_history_updated)
 
         self._border_overlay = _BorderOverlay(central)
+
+    def show_update_banner(self, info):
+        self._update_banner.show_update(info)
+
+    def trigger_update(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self._update_banner.start_update_now()
+
+    def connect_restart(self, slot):
+        self._update_banner.restart_requested.connect(slot)
 
     def _on_tab_switched(self, idx: int):
         self._stack.setCurrentIndex(idx)

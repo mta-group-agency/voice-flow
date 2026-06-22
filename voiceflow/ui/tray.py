@@ -39,6 +39,9 @@ class TrayManager:
         menu.addSeparator()
         open_action = menu.addAction("Open VoiceFlow")
         open_action.triggered.connect(self._show_window)
+        self._update_action = menu.addAction("Update")
+        self._update_action.setVisible(False)
+        self._update_action.triggered.connect(self._main_window.trigger_update)
         menu.addSeparator()
         self._last_action = menu.addAction("No transcription yet")
         self._last_action.setEnabled(False)
@@ -81,6 +84,16 @@ class TrayManager:
 
     def notify(self, title: str, message: str):
         self._tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 3000)
+
+    def notify_update(self, info):
+        self._update_action.setText(f"Update to {info.latest_version}")
+        self._update_action.setVisible(True)
+        self._tray.showMessage(
+            "VoiceFlow",
+            f"VoiceFlow {info.latest_version} is available",
+            QSystemTrayIcon.MessageIcon.Information,
+            5000,
+        )
 
     def notify_error(self, message: str):
         self._tray.showMessage("VoiceFlow", message, QSystemTrayIcon.MessageIcon.Warning, 4000)

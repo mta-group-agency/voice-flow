@@ -11,6 +11,7 @@ from voiceflow.ui import theme as vf_theme
 from voiceflow.ui.main_window import MainWindow
 from voiceflow.ui.overlay import RecordingOverlay
 from voiceflow.ui.tray import TrayManager
+from voiceflow.ui.update_banner import UpdateCheckWorker
 
 
 class VoiceFlowApp:
@@ -47,6 +48,11 @@ class VoiceFlowApp:
         if cfg.theme != "dark":
             self._window.set_theme(cfg.theme)
 
+        self._window.connect_restart(self._qt_app.quit)
+        self._update_worker = UpdateCheckWorker()
+        self._update_worker.update_found.connect(self._on_update_found)
+        self._update_worker.start()
+
     def _on_state_changed(self, state: State):
         if state == State.RECORDING:
             self._overlay.show_recording()
@@ -54,6 +60,10 @@ class VoiceFlowApp:
             self._overlay.show_processing()
         else:
             self._overlay.hide_overlay()
+
+    def _on_update_found(self, info):
+        self._window.show_update_banner(info)
+        self._tray.notify_update(info)
 
     def _on_theme_changed(self, new_theme: str):
         vf_theme.set_active(new_theme)
