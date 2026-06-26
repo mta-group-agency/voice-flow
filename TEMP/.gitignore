@@ -1,0 +1,5 @@
+# TEMP/ to strefa robocza — jej zawartość NIE wchodzi do repo.
+# Śledzone zostają tylko ten plik i README.
+*
+!.gitignore
+!README.md

@@ -8,7 +8,8 @@
   z kolegami przez release'y w organizacyjnym repo GitHub — każdy na własnych kluczach API.
 - **Cele nadrzędne**: stabilność (zero crashy) + koszt ≈ 0 zł (darmowe tory domyślne).
 - **Scope**: Windows. **Poza scope (świadomie)**: macOS, Linux, web, mobile, i18n UI.
-- Szerszy kontekst i plan: `.claude/memory/` (`produkt-kontekst.md`, `plan-rozwoju.md`, `TODO.md`).
+- Szerszy kontekst i plan strategiczny: `.claude/memory/` (`produkt-kontekst.md`, `plan-rozwoju.md`).
+  Operacyjne TODO (aktywny fokus + backlog) żyje w `TODO/TODO.md` — to je czyta `/orchestrator` na starcie.
 
 ## Stack technologiczny
 
@@ -33,7 +34,9 @@ VoiceFlow/
 ├── generate_icons.py        # generowanie ikon (.ico/.png) z assets
 ├── requirements.txt
 ├── assets/                  # ikony (icon.ico, icon.png, icon_rec/proc.png) — bundlowane do .exe
-├── .claude/memory/          # kontekst produktu, plan rozwoju, TODO (backlog pomysłów)
+├── .claude/memory/          # kontekst produktu + plan rozwoju (strategia, prowadzona przez /doradca)
+├── TODO/                    # operacyjne TODO (TODO.md: aktywny fokus + backlog) — czytane przez /orchestrator
+├── TEMP/                    # strefa robocza (materiały + artefakty robocze), gitignorowana
 ├── voiceflow/
 │   ├── app.py               # bootstrap: inicjalizacja wszystkich komponentów
 │   ├── api/                 # base_client, claude_client, gemini_client, groq_client, local_whisper_client
