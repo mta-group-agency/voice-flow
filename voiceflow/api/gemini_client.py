@@ -136,6 +136,16 @@ class GeminiClient(BaseAIClient):
         result = self._extract_text(data)
         return result if result else text
 
+    def run_assistant(self, command: str, context: str | None, system_prompt: str) -> str:
+        user_message = self._build_assistant_user_message(command, context)
+        payload = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"parts": [{"text": user_message}]}],
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
+        }
+        data = self._post(self.ai_model, payload)
+        return self._extract_text(data)
+
     def test_connection(self) -> bool:
         try:
             payload = {"contents": [{"parts": [{"text": "Say: ok"}]}]}

@@ -33,6 +33,20 @@ class ClaudeClient(BaseAIClient):
         except Exception as e:
             raise RuntimeError(f"Claude API error: {type(e).__name__}: {e.args[0] if e.args else ''}") from None
 
+    def run_assistant(self, command: str, context: str | None, system_prompt: str) -> str:
+        user_message = self._build_assistant_user_message(command, context)
+        try:
+            client = self._client()
+            message = client.messages.create(
+                model=self.model,
+                max_tokens=2048,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
+            return message.content[0].text.strip() if message.content else ""
+        except Exception as e:
+            raise RuntimeError(f"Claude API error: {type(e).__name__}: {e.args[0] if e.args else ''}") from None
+
     def test_connection(self) -> bool:
         try:
             client = self._client()

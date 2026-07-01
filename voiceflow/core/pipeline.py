@@ -27,6 +27,9 @@ if TYPE_CHECKING:
 
 _TRANSLATE_RE = re.compile(r"^translate\s+to\s+(\w+)[\s:,]+(.+)$", re.IGNORECASE | re.DOTALL)
 _MIN_AUDIO_DURATION = 0.3  # seconds
+_MODE_DICTATION = "dictation"
+_MODE_ASSISTANT = "assistant"
+_ASSISTANT_CONTEXT_LIMIT = 8000
 
 
 class State(Enum):
@@ -72,6 +75,8 @@ class Pipeline(QObject):
         self._recording_start: float = 0.0
         self._last_wav: bytes = b""
         self._cancel_flag: bool = False
+        self._mode: str = _MODE_DICTATION
+        self._assistant_context: str | None = None
 
         self._timeout_timer = QTimer(self)
         self._timeout_timer.setSingleShot(True)
@@ -84,15 +89,22 @@ class Pipeline(QObject):
             device_index=cfg.audio_device_index,
         )
         self._hotkey = HotkeyManager(cfg.hotkey)
-        self._injector = TextInjector(hotkey_manager=self._hotkey)
+        self._hotkey_assistant = HotkeyManager(cfg.hotkey_assistant)
+        self._injector = TextInjector(
+            hotkey_managers=[self._hotkey, self._hotkey_assistant]
+        )
 
         self._hotkey.hotkey_pressed.connect(self._on_hotkey_pressed)
         self._hotkey.hotkey_released.connect(self._on_hotkey_released)
         self._hotkey.cancel_pressed.connect(self._on_cancel_pressed)
+        self._hotkey_assistant.hotkey_pressed.connect(self._on_assistant_hotkey_pressed)
+        self._hotkey_assistant.hotkey_released.connect(self._on_hotkey_released)
+        self._hotkey_assistant.cancel_pressed.connect(self._on_cancel_pressed)
         self._recorder.recording_finished.connect(self._on_recording_finished)
         self._inject_ready.connect(self._on_inject_ready)
 
         self._hotkey.start()
+        self._hotkey_assistant.start()
 
     # ── public API ──────────────────────────────────────────────────────────
 
@@ -112,6 +124,7 @@ class Pipeline(QObject):
     def reconfigure(self):
         cfg = self._settings.config
         self._hotkey.reconfigure(cfg.hotkey)
+        self._hotkey_assistant.reconfigure(cfg.hotkey_assistant)
         self._recorder.sample_rate = cfg.sample_rate
         self._recorder.device_index = cfg.audio_device_index
         if cfg.turso_enabled:
@@ -121,6 +134,7 @@ class Pipeline(QObject):
 
     def shutdown(self):
         self._hotkey.stop()
+        self._hotkey_assistant.stop()
         if self._recorder.isRunning():
             self._recorder.stop_recording()
             self._recorder.wait(2000)
@@ -128,6 +142,10 @@ class Pipeline(QObject):
     @property
     def state(self) -> State:
         return self._state
+
+    @property
+    def mode(self) -> str:
+        return self._mode
 
     @property
     def recorder(self) -> AudioRecorder:
@@ -206,9 +224,31 @@ class Pipeline(QObject):
     def _on_hotkey_pressed(self):
         if self._state != State.IDLE:
             return
+        self._mode = _MODE_DICTATION
+        self._assistant_context = None
         self._set_state(State.RECORDING)
         self._recording_start = time.time()
         self._recorder.start_recording()
+
+    @pyqtSlot()
+    def _on_assistant_hotkey_pressed(self):
+        if self._state != State.IDLE:
+            return
+        self._mode = _MODE_ASSISTANT
+        self._assistant_context = self._read_clipboard_context()
+        self._set_state(State.RECORDING)
+        self._recording_start = time.time()
+        self._recorder.start_recording()
+
+    def _read_clipboard_context(self) -> str | None:
+        # Must run on the main Qt thread (called from the hotkey-press slot).
+        if not self._settings.config.assistant_use_clipboard:
+            return None
+        from PyQt6.QtWidgets import QApplication
+        text = QApplication.clipboard().text()
+        if not text or not text.strip():
+            return None
+        return text[:_ASSISTANT_CONTEXT_LIMIT]
 
     @pyqtSlot()
     def _on_hotkey_released(self):
@@ -239,9 +279,12 @@ class Pipeline(QObject):
             proc_config.remove_fillers or proc_config.fix_grammar
             or proc_config.translation_target or proc_config.tone
         )
-        # Combined Gemini call only when both STT and AI processing use Gemini
+        # Combined Gemini call only when both STT and AI processing use Gemini.
+        # Assistant mode always transcribes separately so the raw command is
+        # available for the assistant call.
         use_combined = (
-            any_feature
+            self._mode == _MODE_DICTATION
+            and any_feature
             and cfg.stt_provider == "gemini"
             and cfg.ai_model_provider == "gemini"
         )
@@ -275,6 +318,10 @@ class Pipeline(QObject):
         if not raw_text.strip():
             self._set_state(State.IDLE)
             self.error_occurred.emit("Could not transcribe audio. Try speaking more clearly.")
+            return
+
+        if self._mode == _MODE_ASSISTANT:
+            self._run_assistant(raw_text)
             return
 
         text, proc_config = self._build_processing_config(raw_text)
@@ -317,6 +364,49 @@ class Pipeline(QObject):
         worker = _Worker(
             _process,
             on_result=lambda r: self._on_ai_done(raw_text=r[1], final_text=r[0], cost=r[2]),
+            on_error=self._on_error,
+        )
+        self._pool.start(worker)
+
+    def _run_assistant(self, command: str):
+        cfg = self._settings.config
+        context = self._assistant_context
+        system_prompt = cfg.assistant_prompt
+
+        self._set_state(State.PROCESSING)
+
+        audio_s = getattr(self, "_last_duration", 0.0)
+        if cfg.stt_provider == "groq":
+            stt_cost = GroqClient.estimate_cost(audio_s, 0)
+        elif cfg.stt_provider == "local":
+            stt_cost = 0.0
+        else:
+            stt_cost = GeminiClient.estimate_cost(audio_s, len(command))
+
+        if cfg.ai_model_provider == "claude" and cfg.claude_api_key:
+            client = self._make_claude()
+        elif cfg.ai_model_provider == "groq" and cfg.groq_api_key:
+            client = self._make_groq()
+        else:
+            client = self._make_gemini()
+
+        in_chars = len(command) + (len(context) if context else 0)
+
+        def _assist():
+            result = client.run_assistant(command, context, system_prompt)
+            if not result.strip():
+                raise RuntimeError("Assistant returned an empty response.")
+            if isinstance(client, GeminiClient):
+                ai_cost = GeminiClient.estimate_cost(0, len(result))
+            elif isinstance(client, GroqClient):
+                ai_cost = (in_chars / 4 * 0.59 + len(result) / 4 * 0.79) / 1_000_000
+            else:
+                ai_cost = ClaudeClient.estimate_cost(in_chars // 4, len(result) // 4)
+            return result, stt_cost + ai_cost
+
+        worker = _Worker(
+            _assist,
+            on_result=lambda r: self._on_ai_done(raw_text=command, final_text=r[0], cost=r[1]),
             on_error=self._on_error,
         )
         self._pool.start(worker)

@@ -13,6 +13,20 @@ class BaseAIClient(ABC):
         """Post-process transcribed text according to ProcessingConfig."""
 
     @abstractmethod
+    def run_assistant(self, command: str, context: str | None, system_prompt: str) -> str:
+        """Execute the transcribed command as an AI assistant and return ready-to-paste text."""
+
+    def _build_assistant_user_message(self, command: str, context: str | None) -> str:
+        if context and context.strip():
+            return (
+                "KONTEKST (zaznaczony/skopiowany tekst):\n"
+                f"{context.strip()}\n\n"
+                "POLECENIE:\n"
+                f"{command.strip()}"
+            )
+        return command.strip()
+
+    @abstractmethod
     def test_connection(self) -> bool:
         """Return True if the API key is valid and reachable."""
 

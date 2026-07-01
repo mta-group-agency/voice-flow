@@ -289,7 +289,7 @@ class MainWindow(QMainWindow):
         self._tab_bar.theme_toggled.connect(self._toggle_theme)
         root.addWidget(self._tab_bar)
 
-        self._update_banner = UpdateBanner(self)
+        self._update_banner = UpdateBanner(settings, self)
         banner_wrap = QWidget()
         bw_lay = QVBoxLayout(banner_wrap)
         bw_lay.setContentsMargins(28, 14, 28, 0)

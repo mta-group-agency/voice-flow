@@ -43,7 +43,7 @@ class HotkeyManager(QObject):
 
     def _parse(self, combo_str: str) -> set[str]:
         parts = {p.strip() for p in combo_str.split(",") if p.strip()}
-        return parts if parts else {"Key.alt_r"}
+        return parts
 
     def reconfigure(self, hotkey_str: str):
         self._hotkey_str = hotkey_str
@@ -79,7 +79,7 @@ class HotkeyManager(QObject):
         if not s:
             return
         self._held.add(s)
-        if not self._active and self._target.issubset(self._held):
+        if not self._active and self._target and self._target.issubset(self._held):
             self._active = True
             self.hotkey_pressed.emit()
 

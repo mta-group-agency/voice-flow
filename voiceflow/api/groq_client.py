@@ -96,6 +96,19 @@ class GroqClient(BaseAIClient):
         result = data["choices"][0]["message"]["content"].strip()
         return result if result else text
 
+    def run_assistant(self, command: str, context: str | None, system_prompt: str) -> str:
+        user_message = self._build_assistant_user_message(command, context)
+        data = self._post_json(_CHAT_URL, {
+            "model": self.ai_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 2048,
+        })
+        return data["choices"][0]["message"]["content"].strip()
+
     def test_connection(self) -> bool:
         try:
             self._post_json(_CHAT_URL, {

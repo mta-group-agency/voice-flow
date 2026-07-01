@@ -46,7 +46,6 @@ class _LevelMeter(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
 
-        t = theme.get_tokens()
         h = self.height()
         bar_w = 5
         gap = (self.width() - self.BAR_COUNT * bar_w) // (self.BAR_COUNT - 1)
@@ -55,7 +54,10 @@ class _LevelMeter(QWidget):
             bh = max(6, int(lvl * h))
             x = i * (bar_w + gap)
             y = h - bh
-            color = QColor(t["success"]) if lvl > 0.08 else QColor(t["text_4"])
+            if lvl > 0.08:
+                color = QColor(255, 255, 255)
+            else:
+                color = QColor(255, 255, 255, 60)
             painter.setBrush(color)
             painter.drawRoundedRect(x, y, bar_w, bh, 2, 2)
 
@@ -84,8 +86,7 @@ class _PulsingDot(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        t = theme.get_tokens()
-        color = QColor(t["accent"])
+        color = QColor(255, 255, 255)
         color.setAlphaF(self._opacity)
         painter.setBrush(color)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -144,6 +145,8 @@ class RecordingOverlay(QWidget):
 
         self._meter.setVisible(False)
         self._dot.setVisible(False)
+        self._assistant_mode = False
+        self._processing = False
 
     def _apply_stylesheet(self):
         from voiceflow.ui.theme import build_overlay_stylesheet, get_active
@@ -166,10 +169,15 @@ class RecordingOverlay(QWidget):
     def set_level(self, level: float):
         self._meter.set_level(level)
 
+    def set_assistant_mode(self, enabled: bool):
+        self._assistant_mode = enabled
+        self.update()
+
     def show_recording(self):
+        self._processing = False
         self._elapsed = 0
         self._timer_label.setText("0:00")
-        self._label.setText("Recording")
+        self._label.setText("Assistant — recording" if self._assistant_mode else "Recording")
         self._meter.setVisible(True)
         self._dot.setVisible(False)
         self._stop_btn.setVisible(False)
@@ -179,8 +187,9 @@ class RecordingOverlay(QWidget):
         self.raise_()
 
     def show_processing(self):
+        self._processing = True
         self._tick.stop()
-        self._label.setText("Processing…")
+        self._label.setText("Assistant — processing…" if self._assistant_mode else "Processing…")
         self._meter.setVisible(False)
         self._dot.setVisible(True)
         self._timer_label.setText("")
@@ -190,6 +199,7 @@ class RecordingOverlay(QWidget):
         self.raise_()
 
     def hide_overlay(self):
+        self._processing = False
         self._tick.stop()
         self._stop_btn.setVisible(False)
         self.hide()
@@ -216,15 +226,21 @@ class RecordingOverlay(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         t = theme.get_tokens()
 
-        # Warm dark background
-        bg = QColor(t["bg_titlebar"])
-        bg.setAlpha(230)
+        base = QColor(t["mode_assistant"] if self._assistant_mode else t["mode_dictation"])
+        r, g, b = base.red(), base.green(), base.blue()
+        if self._processing:
+            r, g, b = int(r * 0.82), int(g * 0.82), int(b * 0.82)
+
+        bg = QColor(r, g, b, 245)
         painter.setBrush(bg)
 
-        # Subtle accent border
-        accent = QColor(t["accent"])
-        accent.setAlpha(40)
-        pen = QPen(accent)
+        border = QColor(
+            int(r + (255 - r) * 0.25),
+            int(g + (255 - g) * 0.25),
+            int(b + (255 - b) * 0.25),
+            200,
+        )
+        pen = QPen(border)
         pen.setWidth(1)
         painter.setPen(pen)
 

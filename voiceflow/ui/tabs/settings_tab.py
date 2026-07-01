@@ -13,6 +13,7 @@ from voiceflow.api.claude_client import ClaudeClient
 from voiceflow.api.gemini_client import GeminiClient
 from voiceflow.api.groq_client import GroqClient
 from voiceflow.api.local_whisper_client import LocalWhisperClient, MODEL_INFO
+from voiceflow.config.schema import AppConfig
 from voiceflow.core import autostart
 from voiceflow.ui.widgets.hotkey_capture import HotkeyCaptureWidget
 from voiceflow.ui.widgets.toggle_switch import ToggleSwitch
@@ -50,6 +51,7 @@ class SettingsTab(QWidget):
         self._build_stt_section(layout)
         self._build_turso_section(layout)
         self._build_ai_processing_section(layout)
+        self._build_assistant_section(layout)
         self._build_features_section(layout)
         self._build_system_section(layout)
         self._build_appearance_section(layout)
@@ -69,6 +71,18 @@ class SettingsTab(QWidget):
         hint.setWordWrap(True)
         form.addRow("Record Key:", self._hotkey_widget)
         form.addRow("", hint)
+
+        self._hotkey_assistant_widget = HotkeyCaptureWidget()
+        self._hotkey_assistant_widget.setObjectName("primary")
+        self._hotkey_assistant_widget.key_captured.connect(self._on_hotkey_captured)
+        assistant_hint = QLabel(
+            "Second key — records a command for the AI assistant (e.g. Right Ctrl). "
+            "The assistant runs it and pastes the result."
+        )
+        assistant_hint.setObjectName("hint")
+        assistant_hint.setWordWrap(True)
+        form.addRow("Assistant Key:", self._hotkey_assistant_widget)
+        form.addRow("", assistant_hint)
         layout.addWidget(group)
 
     def _build_stt_section(self, layout: QVBoxLayout):
@@ -306,6 +320,48 @@ class SettingsTab(QWidget):
         self._radio_gemini.toggled.connect(self._update_ai_provider_widgets)
         self._radio_claude.toggled.connect(self._update_ai_provider_widgets)
         self._radio_groq_ai.toggled.connect(self._update_ai_provider_widgets)
+
+    def _build_assistant_section(self, layout: QVBoxLayout):
+        group = QGroupBox("AI Assistant")
+        vbox = QVBoxLayout(group)
+        vbox.setSpacing(10)
+
+        intro = QLabel(
+            "A second hotkey records a command that the assistant runs and pastes as a "
+            "ready result (e.g. \"write a thank-you email\"). It uses the same AI provider "
+            "as text processing above and works independently of whether that is enabled."
+        )
+        intro.setObjectName("hint")
+        intro.setWordWrap(True)
+        vbox.addWidget(intro)
+
+        prompt_lbl = QLabel("Assistant system prompt:")
+        prompt_lbl.setObjectName("hint")
+        prompt_lbl.setWordWrap(True)
+        vbox.addWidget(prompt_lbl)
+
+        self._assistant_prompt = QTextEdit()
+        self._assistant_prompt.setFixedHeight(110)
+        vbox.addWidget(self._assistant_prompt)
+
+        clip_row = QHBoxLayout()
+        clip_lbl = QLabel("Use clipboard as context")
+        clip_lbl.setFixedWidth(250)
+        self._assistant_clipboard_toggle = ToggleSwitch()
+        clip_row.addWidget(clip_lbl)
+        clip_row.addWidget(self._assistant_clipboard_toggle)
+        clip_row.addStretch()
+        vbox.addLayout(clip_row)
+
+        clip_hint = QLabel(
+            "When enabled, the clipboard contents at the moment you press the assistant "
+            "hotkey are attached as context to your command."
+        )
+        clip_hint.setObjectName("hint")
+        clip_hint.setWordWrap(True)
+        vbox.addWidget(clip_hint)
+
+        layout.addWidget(group)
 
     def _build_features_section(self, layout: QVBoxLayout):
         group = QGroupBox("Features")
@@ -617,6 +673,11 @@ class SettingsTab(QWidget):
 
         # Hotkey
         self._hotkey_widget.set_key(cfg.hotkey)
+        self._hotkey_assistant_widget.set_key(cfg.hotkey_assistant)
+
+        # Assistant
+        self._assistant_prompt.setPlainText(cfg.assistant_prompt)
+        self._assistant_clipboard_toggle.setChecked(cfg.assistant_use_clipboard)
 
         # STT
         idx = self._stt_provider_combo.findData(cfg.stt_provider)
@@ -679,6 +740,12 @@ class SettingsTab(QWidget):
 
         # Hotkey
         s.set("hotkey", self._hotkey_widget.current_key())
+        s.set("hotkey_assistant", self._hotkey_assistant_widget.current_key())
+
+        # Assistant
+        assistant_prompt = self._assistant_prompt.toPlainText().strip()
+        s.set("assistant_prompt", assistant_prompt or AppConfig.assistant_prompt)
+        s.set("assistant_use_clipboard", self._assistant_clipboard_toggle.isChecked())
 
         # STT
         s.set("stt_provider",        self._stt_provider_combo.currentData())

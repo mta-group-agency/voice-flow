@@ -12,9 +12,12 @@ from pynput.keyboard import Controller, Key
 class TextInjector:
     RESTORE_DELAY_MS = 1000
 
-    def __init__(self, hotkey_manager=None):
+    def __init__(self, hotkey_manager=None, hotkey_managers=None):
         self._keyboard = Controller()
-        self._hotkey_manager = hotkey_manager
+        managers = list(hotkey_managers) if hotkey_managers else []
+        if hotkey_manager is not None:
+            managers.append(hotkey_manager)
+        self._hotkey_managers = managers
 
     def inject(self, text: str):
         if not text.strip():
@@ -23,8 +26,8 @@ class TextInjector:
         clipboard: QClipboard = QApplication.clipboard()
         previous = clipboard.text()
 
-        if self._hotkey_manager:
-            self._hotkey_manager.set_suppressed(True)
+        for m in self._hotkey_managers:
+            m.set_suppressed(True)
 
         # setText is synchronous on Windows — no sleep needed
         clipboard.setText(text)
@@ -36,7 +39,7 @@ class TextInjector:
 
         def restore():
             clipboard.setText(previous)
-            if self._hotkey_manager:
-                self._hotkey_manager.set_suppressed(False)
+            for m in self._hotkey_managers:
+                m.set_suppressed(False)
 
         QTimer.singleShot(self.RESTORE_DELAY_MS, restore)

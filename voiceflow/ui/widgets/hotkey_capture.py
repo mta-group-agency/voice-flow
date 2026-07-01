@@ -64,7 +64,7 @@ class HotkeyCaptureWidget(QPushButton):
         self.setFixedWidth(200)
 
     def _update_label(self):
-        self.setText(combo_display(self._key))
+        self.setText(combo_display(self._key) or "Click to set")
 
     def _start_capture(self):
         if self._capturing:

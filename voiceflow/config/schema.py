@@ -38,6 +38,16 @@ class AppConfig:
 
     # Hotkey (pynput key string)
     hotkey: str = "Key.alt_r"
+    hotkey_assistant: str = ""
+
+    # AI assistant mode (second hotkey track)
+    assistant_use_clipboard: bool = True
+    assistant_prompt: str = (
+        "Jesteś asystentem piszącym po polsku. Wykonaj polecenie użytkownika i zwróć "
+        "WYŁĄCZNIE gotowy tekst do wklejenia — bez wstępów, komentarzy, wyjaśnień ani "
+        "znaczników formatowania. Jeśli dołączono kontekst (zaznaczony lub skopiowany "
+        "tekst), użyj go tylko wtedy, gdy polecenie wyraźnie się do niego odnosi."
+    )
 
     # Audio
     audio_device_index: Optional[int] = None
@@ -63,3 +73,7 @@ class AppConfig:
     # App meta
     first_run: bool = True
     version: str = "1.0.0"
+    last_run_version: str = ""
+    pending_update_version: str = ""
+    pending_update_notes: str = ""
+    pending_update_video: str = ""

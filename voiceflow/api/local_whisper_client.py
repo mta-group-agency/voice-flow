@@ -125,6 +125,9 @@ class LocalWhisperClient(BaseAIClient):
     def process_text(self, text: str, config: ProcessingConfig) -> str:
         raise NotImplementedError("Local Whisper does not support text processing.")
 
+    def run_assistant(self, command: str, context: str | None, system_prompt: str) -> str:
+        raise NotImplementedError("Local Whisper does not support the AI assistant. Use Gemini, Groq, or Claude.")
+
     def test_connection(self) -> bool:
         return self._model_name in _model_cache
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -37,6 +38,29 @@ class UpdateInfo:
     html_url: str
     sha256: Optional[str]
     size: int
+    body: str = ""
+    video_url: Optional[str] = None
+
+
+_VIDEO_LINE_PREFIXES = ("walkthrough:", "wideo:", "video:")
+_URL_RE = re.compile(r"https?://[^\s)>\]]+")
+
+
+def _extract_video_url(body: str) -> Optional[str]:
+    if not body:
+        return None
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith(_VIDEO_LINE_PREFIXES):
+            match = _URL_RE.search(stripped)
+            if match:
+                return match.group(0)
+    for match in _URL_RE.finditer(body):
+        url = match.group(0)
+        low = url.lower()
+        if "loom.com" in low or "clickup" in low:
+            return url
+    return None
 
 
 def _parse_semver(version: str) -> Optional[tuple[int, int, int]]:
@@ -79,6 +103,8 @@ def check_for_update() -> Optional[UpdateInfo]:
     digest = asset.get("digest")
     sha256 = digest.split("sha256:", 1)[1] if digest and digest.startswith("sha256:") else None
 
+    body = data.get("body", "") or ""
+
     return UpdateInfo(
         update_available=_is_newer(latest_version, __version__),
         latest_version=latest_version,
@@ -86,6 +112,8 @@ def check_for_update() -> Optional[UpdateInfo]:
         html_url=html_url,
         sha256=sha256,
         size=int(asset.get("size", 0)),
+        body=body,
+        video_url=_extract_video_url(body),
     )
 
 

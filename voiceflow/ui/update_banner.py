@@ -43,9 +43,10 @@ class UpdateDownloadWorker(QThread):
 class UpdateBanner(QFrame):
     restart_requested = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, settings=None, parent=None):
         super().__init__(parent)
         self.setObjectName("update_banner")
+        self._settings = settings
         self._info: UpdateInfo | None = None
         self._worker: UpdateDownloadWorker | None = None
         self.hide()
@@ -104,6 +105,10 @@ class UpdateBanner(QFrame):
     def _start_update(self):
         if self._info is None:
             return
+        if self._settings is not None:
+            self._settings.set("pending_update_version", self._info.latest_version)
+            self._settings.set("pending_update_notes", self._info.body)
+            self._settings.set("pending_update_video", self._info.video_url or "")
         self._update_btn.setEnabled(False)
         self._later_btn.hide()
         self._update_btn.setText("Downloading…")

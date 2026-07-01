@@ -24,6 +24,8 @@ DARK: dict[str, str] = {
     "on_accent":     "#252220",
     "success":       "#5CC58A",
     "danger":        "#E66A4C",
+    "mode_dictation": "#2563EB",
+    "mode_assistant": "#7C3AED",
 }
 
 LIGHT: dict[str, str] = {
@@ -45,6 +47,8 @@ LIGHT: dict[str, str] = {
     "on_accent":     "#272218",
     "success":       "#2E9E5E",
     "danger":        "#C4422A",
+    "mode_dictation": "#2563EB",
+    "mode_assistant": "#7C3AED",
 }
 
 TOKENS: dict[str, dict[str, str]] = {"dark": DARK, "light": LIGHT}
@@ -381,6 +385,16 @@ QProgressBar#update_progress::chunk {{
     background: {t['accent']}; border-radius: 5px;
 }}
 
+/* ── Dialog (what's new / welcome) ───────── */
+QDialog {{ background: {t['bg_app']}; }}
+QLabel#dialog_title {{
+    color: {t['text_1']}; font-size: 18px; font-weight: 600; background: transparent;
+}}
+QTextBrowser#dialog_body {{
+    background: {t['surface_1']}; border: 1px solid {t['hairline']};
+    border-radius: 10px; padding: 10px 12px; color: {t['text_1']}; font-size: 13px;
+}}
+
 /* ── Misc ────────────────────────────────── */
 QMessageBox {{ background: {t['surface_1']}; }}
 QToolTip {{
@@ -393,23 +407,20 @@ QToolTip {{
 
 def build_overlay_stylesheet(theme: str = "dark") -> str:
     t = TOKENS.get(theme, DARK)
-    dng12 = _rgba(t["danger"], 0.12)
-    dng30 = _rgba(t["danger"], 0.30)
-    dng22 = _rgba(t["danger"], 0.22)
     return f"""
 QLabel#overlay_text {{
-    color: {t['text_1']}; font-weight: 600; font-size: 13px;
+    color: #FFFFFF; font-weight: 600; font-size: 13px;
     font-family: "Segoe UI Variable", "Segoe UI", sans-serif; background: transparent;
 }}
 QLabel#overlay_timer {{
-    color: {t['accent']}; font-weight: 600; font-size: 12px;
+    color: rgba(255,255,255,0.80); font-weight: 600; font-size: 12px;
     font-family: "Cascadia Mono", "Consolas", monospace; background: transparent;
 }}
 QPushButton#overlay_stop {{
-    background: {dng12}; color: {t['danger']};
-    border: 1px solid {dng30}; border-radius: 6px;
+    background: rgba(255,255,255,0.18); color: #FFFFFF;
+    border: 1px solid rgba(255,255,255,0.38); border-radius: 6px;
     font-size: 11px; font-weight: 600;
     padding: 2px 12px; min-height: 24px; max-height: 24px;
 }}
-QPushButton#overlay_stop:hover {{ background: {dng22}; border-color: {t['danger']}; }}
+QPushButton#overlay_stop:hover {{ background: rgba(255,255,255,0.28); }}
 """
