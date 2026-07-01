@@ -6,8 +6,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QThread, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices, QPixmap
+from PyQt6.QtCore import Qt, QPointF, QThread, QUrl, pyqtSignal
+from PyQt6.QtGui import (
+    QBrush, QColor, QDesktopServices, QPainter, QPainterPath, QPen, QPixmap,
+)
 from PyQt6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout,
 )
@@ -150,11 +152,36 @@ class WhatsNewDialog(QDialog):
 
         lay.addLayout(row)
 
+    def _with_play_overlay(self, pixmap: QPixmap) -> QPixmap:
+        result = QPixmap(pixmap)
+        w, h = result.width(), result.height()
+        r = int(min(w, h) * 0.13)
+        cx, cy = w // 2, h // 2
+
+        painter = QPainter(result)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        painter.setPen(QPen(Qt.PenStyle.NoPen))
+        painter.setBrush(QBrush(QColor(0, 0, 0, 120)))
+        painter.drawEllipse(QPointF(cx, cy), r, r)
+
+        triangle = QPainterPath()
+        triangle.moveTo(cx - r * 0.35, cy - r * 0.55)
+        triangle.lineTo(cx - r * 0.35, cy + r * 0.55)
+        triangle.lineTo(cx + r * 0.6, cy)
+        triangle.closeSubpath()
+        painter.setBrush(QBrush(QColor(255, 255, 255, 235)))
+        painter.drawPath(triangle)
+
+        painter.end()
+        return result
+
     def _on_gif_loaded(self, data: bytes):
         if not data or self._gif_label is None:
             return
         pm = QPixmap()
         if not pm.loadFromData(data):
             return
+        pm = self._with_play_overlay(pm)
         self._gif_label.setPixmap(pm)
         self._gif_label.show()
