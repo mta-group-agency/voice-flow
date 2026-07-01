@@ -24,6 +24,18 @@ class UpdateCheckWorker(QThread):
             self.update_found.emit(info)
 
 
+class ReleaseNotesWorker(QThread):
+    notes_ready = pyqtSignal(str, object)
+
+    def __init__(self, version: str, parent=None):
+        super().__init__(parent)
+        self._version = version
+
+    def run(self):
+        body, video_url = updater.fetch_release_notes(self._version)
+        self.notes_ready.emit(body, video_url)
+
+
 class UpdateDownloadWorker(QThread):
     progress = pyqtSignal(int)
     finished_ok = pyqtSignal()

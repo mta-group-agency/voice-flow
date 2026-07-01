@@ -12,7 +12,7 @@ from voiceflow.ui import theme as vf_theme
 from voiceflow.ui.main_window import MainWindow
 from voiceflow.ui.overlay import RecordingOverlay
 from voiceflow.ui.tray import TrayManager
-from voiceflow.ui.update_banner import UpdateCheckWorker
+from voiceflow.ui.update_banner import ReleaseNotesWorker, UpdateCheckWorker
 from voiceflow.ui.whats_new_dialog import (
     WELCOME_BODY, WELCOME_TITLE, WELCOME_VIDEO_URL, WhatsNewDialog,
 )
@@ -78,21 +78,36 @@ class VoiceFlowApp:
             if cfg.pending_update_version == __version__ and cfg.pending_update_notes:
                 body = cfg.pending_update_notes
                 video = cfg.pending_update_video or None
+                WhatsNewDialog(
+                    f"Zaktualizowano do {__version__} — co nowego", body, video,
+                    mode="post_update", parent=self._window,
+                ).exec()
             else:
-                body = (
-                    f"Zaktualizowano do {__version__}. "
-                    f"Zobacz szczegóły wydania na [GitHub]({_RELEASES_URL})."
-                )
-                video = None
-            WhatsNewDialog(
-                f"Zaktualizowano do {__version__} — co nowego", body, video,
-                mode="post_update", parent=self._window,
-            ).exec()
+                self._notes_worker = ReleaseNotesWorker(__version__)
+                self._notes_worker.notes_ready.connect(self._on_release_notes)
+                self._notes_worker.start()
+
             self._settings.set("pending_update_version", "")
             self._settings.set("pending_update_notes", "")
             self._settings.set("pending_update_video", "")
 
         self._settings.set("last_run_version", __version__)
+
+    def _on_release_notes(self, body, video):
+        if body:
+            WhatsNewDialog(
+                f"Zaktualizowano do {__version__} — co nowego", body, video,
+                mode="post_update", parent=self._window,
+            ).exec()
+        else:
+            fallback = (
+                f"Zaktualizowano do {__version__}. "
+                f"Zobacz szczegóły wydania na [GitHub]({_RELEASES_URL})."
+            )
+            WhatsNewDialog(
+                f"Zaktualizowano do {__version__} — co nowego", fallback,
+                mode="post_update", parent=self._window,
+            ).exec()
 
     def _on_update_found(self, info):
         self._window.show_update_banner(info)

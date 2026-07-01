@@ -394,6 +394,9 @@ QTextBrowser#dialog_body {{
     background: {t['surface_1']}; border: 1px solid {t['hairline']};
     border-radius: 10px; padding: 10px 12px; color: {t['text_1']}; font-size: 13px;
 }}
+QLabel#gif_thumb {{
+    background: {t['surface_1']}; border: 1px solid {t['hairline']}; border-radius: 10px;
+}}
 
 /* ── Misc ────────────────────────────────── */
 QMessageBox {{ background: {t['surface_1']}; }}

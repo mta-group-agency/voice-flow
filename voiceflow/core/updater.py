@@ -22,6 +22,7 @@ from voiceflow.__version__ import __version__
 from voiceflow.core import logger
 
 _LATEST_URL = "https://api.github.com/repos/mta-group-agency/voice-flow/releases/latest"
+_TAG_URL = "https://api.github.com/repos/mta-group-agency/voice-flow/releases/tags/v{version}"
 _ASSET_NAME = "VoiceFlow.exe"
 _HEADERS = {"Accept": "application/vnd.github+json"}
 _CHECK_TIMEOUT = 10
@@ -44,6 +45,37 @@ class UpdateInfo:
 
 _VIDEO_LINE_PREFIXES = ("walkthrough:", "wideo:", "video:")
 _URL_RE = re.compile(r"https?://[^\s)>\]]+")
+
+
+def loom_gif_url(video_url: Optional[str]) -> Optional[str]:
+    if not video_url or "loom.com" not in video_url:
+        return None
+    try:
+        resp = requests.get(
+            "https://www.loom.com/v1/oembed",
+            params={"url": video_url},
+            timeout=_CHECK_TIMEOUT,
+        )
+        resp.raise_for_status()
+        thumb = resp.json().get("thumbnail_url")
+        return thumb or None
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def fetch_release_notes(version: str) -> tuple[str, Optional[str]]:
+    try:
+        resp = requests.get(
+            _TAG_URL.format(version=version), headers=_HEADERS, timeout=_CHECK_TIMEOUT
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException as e:
+        _log.debug("Release notes fetch failed: %s", type(e).__name__)
+        return "", None
+
+    body = data.get("body", "") or ""
+    return body, _extract_video_url(body)
 
 
 def _extract_video_url(body: str) -> Optional[str]:
