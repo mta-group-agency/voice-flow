@@ -33,7 +33,7 @@ class AppConfig:
     # AI text processing
     ai_model_provider: str = "gemini"         # "gemini" | "claude" | "groq"
     gemini_ai_model: str = "gemini-2.5-flash"
-    claude_ai_model: str = "claude-sonnet-4-6"
+    claude_ai_model: str = "claude-sonnet-5"
     groq_ai_model: str = "llama-3.3-70b-versatile"
 
     # Hotkey (pynput key string)
@@ -42,8 +42,9 @@ class AppConfig:
 
     # AI assistant mode (second hotkey track)
     assistant_use_clipboard: bool = True
+    assistant_model_provider: str = ""   # "" = use ai_model_provider; else "gemini"|"claude"|"groq"
     assistant_gemini_model: str = "gemini-2.5-flash"
-    assistant_claude_model: str = "claude-sonnet-4-6"
+    assistant_claude_model: str = "claude-sonnet-5"
     assistant_groq_model: str = "llama-3.3-70b-versatile"
     assistant_prompt: str = (
         "Jesteś asystentem piszącym po polsku. Wykonaj polecenie użytkownika i zwróć "

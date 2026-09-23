@@ -1,3 +1,4 @@
+import re
 import time
 
 import requests
@@ -10,6 +11,9 @@ _CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 _MODELS_URL = "https://api.groq.com/openai/v1/models"
 _TIMEOUT = 30
 _RETRYABLE = {429, 500, 502, 503, 504}
+# Reasoning models (deepseek-r1, distill, qwq...) prefix their answer with a
+# <think>...</think> block our client doesn't parse — strip it before it reaches the clipboard.
+_THINK_RE = re.compile(r"^\s*<think>.*?</think>\s*", re.DOTALL)
 
 
 class GroqClient(BaseAIClient):
@@ -94,7 +98,7 @@ class GroqClient(BaseAIClient):
             "temperature": 0.1,
             "max_tokens": 2048,
         })
-        result = data["choices"][0]["message"]["content"].strip()
+        result = _THINK_RE.sub("", data["choices"][0]["message"]["content"]).strip()
         return result if result else text
 
     def run_assistant(self, command: str, context: str | None, system_prompt: str) -> str:
@@ -108,7 +112,7 @@ class GroqClient(BaseAIClient):
             "temperature": 0.3,
             "max_tokens": 2048,
         })
-        return data["choices"][0]["message"]["content"].strip()
+        return _THINK_RE.sub("", data["choices"][0]["message"]["content"]).strip()
 
     def test_connection(self) -> bool:
         try:
@@ -142,5 +146,8 @@ class GroqClient(BaseAIClient):
     @staticmethod
     def split_stt_and_chat(model_ids: list[str]) -> tuple[list[str], list[str]]:
         stt = [m for m in model_ids if "whisper" in m.lower()]
-        chat = [m for m in model_ids if "whisper" not in m.lower() and "tts" not in m.lower()]
+        # guard/embed/moderation models are unusable for chat/assistant output —
+        # reasoning models (deepseek/qwq) stay listed; auto-select alone excludes them.
+        not_chat = ("whisper", "tts", "guard", "embed", "moderation")
+        chat = [m for m in model_ids if not any(bad in m.lower() for bad in not_chat)]
         return stt, chat

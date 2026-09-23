@@ -5,6 +5,7 @@ VoiceFlow application bootstrap.
 from PyQt6.QtWidgets import QApplication, QDialog
 
 from voiceflow.__version__ import __version__
+from voiceflow.config import model_healing
 from voiceflow.config.settings_manager import SettingsManager
 from voiceflow.core.pipeline import Pipeline, State
 from voiceflow.storage.history_db import HistoryDB
@@ -19,6 +20,58 @@ from voiceflow.ui.whats_new_dialog import (
 )
 
 _RELEASES_URL = "https://github.com/mta-group-agency/voice-flow/releases"
+
+# Config field -> the Settings section a user would recognize and go fix, so a healing
+# toast can point at "AI Assistant" instead of a raw config key name.
+_HEALED_FIELD_FEATURES = {
+    "stt_model": "Speech-to-Text",
+    "groq_stt_model": "Speech-to-Text",
+    "gemini_ai_model": "AI Text Processing",
+    "claude_ai_model": "AI Text Processing",
+    "groq_ai_model": "AI Text Processing",
+    "assistant_gemini_model": "AI Assistant",
+    "assistant_claude_model": "AI Assistant",
+    "assistant_groq_model": "AI Assistant",
+}
+
+
+def _heal_feature_name(field: str) -> str:
+    return _HEALED_FIELD_FEATURES.get(field, field)
+
+
+def _heal_notification_body(
+    provider: str, healed: list[tuple[str, str, str]], ai_processing_enabled: bool = True
+) -> str:
+    """One short toast body, built around feature names instead of raw model ids.
+    Kept as a module function (not a method) so it stays callable with any object
+    standing in for the app in a test harness."""
+    provider_name = provider.capitalize()
+
+    # A feature the user has switched off is noise, not news — drop it before deciding
+    # how much the toast needs to say.
+    visible = [
+        (field, old, new) for field, old, new in healed
+        if ai_processing_enabled or _heal_feature_name(field) != "AI Text Processing"
+    ]
+    if not visible:
+        old, new = healed[0][1], healed[0][2]
+        return f"{provider_name} discontinued {old}, switched to {new}."
+
+    distinct_pairs = sorted({(old, new) for _, old, new in visible})
+    features = sorted({_heal_feature_name(field) for field, _, _ in visible})
+
+    if len(distinct_pairs) == 1:
+        old, new = distinct_pairs[0]
+        feature = " & ".join(features)
+        if len(features) == 1:
+            return (
+                f"{provider_name} discontinued {old}. {feature} now uses {new}. "
+                f"Change it in Settings → {feature}."
+            )
+        return f"{provider_name} discontinued {old}. {feature} now use {new}. See Settings for details."
+
+    parts = ", ".join(f"{_heal_feature_name(field)} → {new}" for field, old, new in visible)
+    return f"{provider_name} updated {len(visible)} models: {parts}. See Settings for details."
 
 
 class VoiceFlowApp:
@@ -41,7 +94,11 @@ class VoiceFlowApp:
         self._overlay = RecordingOverlay()
         self._tray = TrayManager(qt_app, self._window, self._pipeline)
 
-        if self._settings.last_migrations:
+        # The static migration table only ever covers Gemini fields and is a blind,
+        # offline fallback. When the Gemini key is present, the live model-discovery
+        # notification below is authoritative — sending both would double-toast the
+        # same startup.
+        if self._settings.last_migrations and not cfg.gemini_api_key:
             pairs = sorted({(old, new) for _, old, new in self._settings.last_migrations})
             changes = ", ".join(f'"{old}" -> "{new}"' for old, new in pairs)
             self._tray.notify(
@@ -70,7 +127,7 @@ class VoiceFlowApp:
         self._model_worker = ModelDiscoveryWorker(
             cfg.gemini_api_key, cfg.claude_api_key, cfg.groq_api_key,
         )
-        self._model_worker.provider_models_ready.connect(self._window.apply_discovered_models)
+        self._model_worker.provider_models_ready.connect(self._on_models_discovered)
         self._model_worker.start()
 
     def _on_state_changed(self, state: State):
@@ -135,6 +192,28 @@ class VoiceFlowApp:
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._window.trigger_update()
+
+    def _on_models_discovered(self, provider: str, payload):
+        if isinstance(payload, dict):
+            buckets = [("stt", payload.get("stt", [])), ("chat", payload.get("chat", []))]
+        else:
+            buckets = [("stt", payload), ("chat", payload)] if provider == "gemini" else [("chat", payload)]
+
+        healed = []
+        for kind, available in buckets:
+            for field, old, new in model_healing.heal_config(self._settings.config, provider, kind, available):
+                self._settings.set(field, new)
+                healed.append((field, old, new))
+
+        if healed:
+            self._tray.notify(
+                "VoiceFlow — AI model updated",
+                _heal_notification_body(provider, healed, self._settings.config.ai_processing_enabled),
+            )
+
+        self._window.apply_discovered_models(
+            provider, payload, healed={field: old for field, old, new in healed}
+        )
 
     def _on_theme_changed(self, new_theme: str):
         vf_theme.set_active(new_theme)

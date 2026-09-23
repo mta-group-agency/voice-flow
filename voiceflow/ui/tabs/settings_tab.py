@@ -4,7 +4,7 @@ import threading
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QButtonGroup, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QRadioButton, QScrollArea, QSlider, QTextEdit,
     QVBoxLayout, QWidget,
 )
@@ -27,6 +27,20 @@ class SettingsTab(QWidget):
         super().__init__(parent)
         self._settings = settings
         self._pipeline = pipeline
+        # No empty-string sentinel for stt_provider/ai_model_provider (unlike
+        # assistant_model_provider), so "user hasn't deliberately chosen yet" is
+        # tracked with these — set only from real user interaction (QComboBox.activated /
+        # QButtonGroup.buttonClicked), never from _load_values or the realign methods
+        # themselves, or a fresh install could never auto-realign past its first click.
+        self._stt_provider_user_touched = False
+        self._ai_provider_user_touched = False
+        # True for the duration of _load_values(): the key fields get populated one at a
+        # time there (_gemini_key before _groq_key, _claude_key later still), so a realign
+        # reacting mid-load would judge a provider "keyless" just because its field hasn't
+        # been set yet this round. _load_values sets the resolved provider directly from
+        # cfg instead (see its STT/AI processing sections) and this flag keeps the realign
+        # methods from acting on that half-loaded, misleading snapshot in between.
+        self._loading = False
         self._build_ui()
         self._load_values()
 
@@ -48,15 +62,46 @@ class SettingsTab(QWidget):
         layout.setSpacing(16)
 
         self._build_hotkey_section(layout)
+        self._build_api_keys_section(layout)
         self._build_stt_section(layout)
-        self._build_turso_section(layout)
         self._build_ai_processing_section(layout)
         self._build_assistant_section(layout)
-        self._build_features_section(layout)
+        self._build_turso_section(layout)
         self._build_system_section(layout)
         self._build_appearance_section(layout)
         self._build_save_row(layout)
         layout.addStretch()
+
+        # Both provider-warning labels and all three key fields exist by now (API Keys
+        # section is built first) — refresh on every keystroke so pasting a key clears
+        # the warning immediately, without Save or a restart.
+        # Realigns run first so a key that just appeared can move a radio/combo before
+        # the warning below is computed for the (possibly now-stale) selection.
+        self._gemini_key.textChanged.connect(self._maybe_realign_assistant_provider)
+        self._groq_key.textChanged.connect(self._maybe_realign_assistant_provider)
+        self._claude_key.textChanged.connect(self._maybe_realign_assistant_provider)
+        self._gemini_key.textChanged.connect(self._maybe_realign_stt_provider)
+        self._groq_key.textChanged.connect(self._maybe_realign_stt_provider)
+        self._gemini_key.textChanged.connect(self._maybe_realign_ai_provider)
+        self._groq_key.textChanged.connect(self._maybe_realign_ai_provider)
+        self._claude_key.textChanged.connect(self._maybe_realign_ai_provider)
+        self._gemini_key.textChanged.connect(self._refresh_provider_warnings)
+        self._groq_key.textChanged.connect(self._refresh_provider_warnings)
+        self._claude_key.textChanged.connect(self._refresh_provider_warnings)
+
+        # Combo → config field, so a model-list refresh can read the value that
+        # should survive the repopulation from the config (not the widget's own
+        # possibly-stale current text — see _repopulate_combo).
+        self._model_fields: dict[QComboBox, str] = {
+            self._stt_model: "stt_model",
+            self._groq_stt_model: "groq_stt_model",
+            self._gemini_ai_model: "gemini_ai_model",
+            self._claude_ai_model: "claude_ai_model",
+            self._groq_ai_model: "groq_ai_model",
+            self._assistant_gemini_model: "assistant_gemini_model",
+            self._assistant_claude_model: "assistant_claude_model",
+            self._assistant_groq_model: "assistant_groq_model",
+        }
 
     # ── Section builders ──────────────────────────────────────────────────────
 
@@ -85,6 +130,40 @@ class SettingsTab(QWidget):
         form.addRow("", assistant_hint)
         layout.addWidget(group)
 
+    def _build_api_keys_section(self, layout: QVBoxLayout):
+        group = QGroupBox("API Keys")
+        vbox = QVBoxLayout(group)
+        vbox.setSpacing(10)
+
+        hint = QLabel(
+            "Leave a key empty if you do not use that provider. Groq alone covers "
+            "speech-to-text, text processing and the assistant."
+        )
+        hint.setObjectName("hint")
+        hint.setWordWrap(True)
+        vbox.addWidget(hint)
+
+        form = QFormLayout()
+        form.setContentsMargins(0, 4, 0, 0)
+
+        self._gemini_key = QLineEdit()
+        self._gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._gemini_key.setPlaceholderText("AIza…")
+        form.addRow("Gemini API Key:", self._key_row(self._gemini_key, self._test_gemini))
+
+        self._groq_key = QLineEdit()
+        self._groq_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._groq_key.setPlaceholderText("gsk_…")
+        form.addRow("Groq API Key:", self._key_row(self._groq_key, self._test_groq))
+
+        self._claude_key = QLineEdit()
+        self._claude_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._claude_key.setPlaceholderText("sk-ant-…")
+        form.addRow("Claude API Key:", self._key_row(self._claude_key, self._test_claude))
+
+        vbox.addLayout(form)
+        layout.addWidget(group)
+
     def _build_stt_section(self, layout: QVBoxLayout):
         group = QGroupBox("Speech-to-Text")
         vbox = QVBoxLayout(group)
@@ -107,7 +186,7 @@ class SettingsTab(QWidget):
         self._stt_info_lbl.setWordWrap(True)
         vbox.addWidget(self._stt_info_lbl)
 
-        # Gemini sub-section (model + API key)
+        # Gemini sub-section (model only — API key lives in the API Keys section above)
         self._stt_gemini_widget = QWidget()
         f = QFormLayout(self._stt_gemini_widget)
         f.setContentsMargins(0, 0, 0, 0)
@@ -115,13 +194,9 @@ class SettingsTab(QWidget):
         self._stt_model.setEditable(False)
         self._stt_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite"])
         f.addRow("Model:", self._stt_model)
-        self._gemini_key = QLineEdit()
-        self._gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self._gemini_key.setPlaceholderText("AIza…")
-        f.addRow("Gemini API Key:", self._key_row(self._gemini_key, self._test_gemini))
         vbox.addWidget(self._stt_gemini_widget)
 
-        # Groq sub-section (model + API key)
+        # Groq sub-section (model only — API key lives in the API Keys section above)
         self._stt_groq_widget = QWidget()
         f = QFormLayout(self._stt_groq_widget)
         f.setContentsMargins(0, 0, 0, 0)
@@ -129,10 +204,6 @@ class SettingsTab(QWidget):
         self._groq_stt_model.setEditable(False)
         self._groq_stt_model.addItems(["whisper-large-v3-turbo", "whisper-large-v3"])
         f.addRow("Model:", self._groq_stt_model)
-        self._groq_key = QLineEdit()
-        self._groq_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self._groq_key.setPlaceholderText("gsk_…")
-        f.addRow("Groq API Key:", self._key_row(self._groq_key, self._test_groq))
         vbox.addWidget(self._stt_groq_widget)
 
         # Local sub-section (model picker + download)
@@ -183,37 +254,10 @@ class SettingsTab(QWidget):
         layout.addWidget(group)
 
         self._stt_provider_combo.currentIndexChanged.connect(self._on_stt_provider_changed)
-
-    def _build_turso_section(self, layout: QVBoxLayout):
-        group = QGroupBox("History Storage")
-        vbox = QVBoxLayout(group)
-        vbox.setSpacing(10)
-
-        toggle_row = QHBoxLayout()
-        lbl = QLabel("Store transcriptions in Turso cloud database")
-        lbl.setFixedWidth(330)
-        self._turso_toggle = ToggleSwitch()
-        toggle_row.addWidget(lbl)
-        toggle_row.addWidget(self._turso_toggle)
-        toggle_row.addStretch()
-        vbox.addLayout(toggle_row)
-
-        self._turso_fields = QWidget()
-        f = QFormLayout(self._turso_fields)
-        f.setContentsMargins(0, 0, 0, 0)
-        self._turso_url = QLineEdit()
-        self._turso_url.setPlaceholderText("libsql://mydb-org.turso.io")
-        f.addRow("Turso DB URL:", self._turso_url)
-        self._turso_token = QLineEdit()
-        self._turso_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self._turso_token.setPlaceholderText("auth token…")
-        f.addRow("Auth Token:", self._key_row(self._turso_token, self._test_turso))
-        vbox.addWidget(self._turso_fields)
-
-        layout.addWidget(group)
-        self._turso_toggle.toggled.connect(
-            lambda on: self._turso_fields.setVisible(on)
-        )
+        # activated (not currentIndexChanged) fires only on real user interaction —
+        # not on the programmatic setCurrentIndex in _load_values or in the realign
+        # method below, which is exactly the "did the user deliberately choose" signal.
+        self._stt_provider_combo.activated.connect(self._on_stt_provider_touched)
 
     def _build_ai_processing_section(self, layout: QVBoxLayout):
         group = QGroupBox("AI Text Processing")
@@ -230,31 +274,42 @@ class SettingsTab(QWidget):
         toggle_row.addStretch()
         vbox.addLayout(toggle_row)
 
-        # Always-visible: provider selection + model/key panels. These are not
-        # gated by the toggle above because the AI Assistant (below) reads the
-        # same provider/key regardless of whether dictation post-processing is on.
-        self._ai_provider_widget = QWidget()
-        provider_vbox = QVBoxLayout(self._ai_provider_widget)
-        provider_vbox.setContentsMargins(0, 4, 0, 0)
-        provider_vbox.setSpacing(10)
+        toggle_hint = QLabel(
+            "Cleans up dictated text (fillers, grammar, translation, tone). "
+            "Leave off for raw transcription."
+        )
+        toggle_hint.setObjectName("hint")
+        toggle_hint.setWordWrap(True)
+        vbox.addWidget(toggle_hint)
+
+        # Collapsible body — everything specific to dictation post-processing,
+        # including the provider choice (the Assistant below has its own).
+        self._ai_processing_body = QWidget()
+        body_vbox = QVBoxLayout(self._ai_processing_body)
+        body_vbox.setContentsMargins(0, 4, 0, 0)
+        body_vbox.setSpacing(10)
 
         provider_row = QHBoxLayout()
         provider_row.addWidget(QLabel("Provider:"))
         self._radio_gemini = QRadioButton("Gemini")
         self._radio_claude = QRadioButton("Claude")
         self._radio_groq_ai = QRadioButton("Groq")
+        self._ai_provider_group = QButtonGroup(self)
+        for btn in (self._radio_gemini, self._radio_claude, self._radio_groq_ai):
+            self._ai_provider_group.addButton(btn)
         provider_row.addWidget(self._radio_gemini)
         provider_row.addWidget(self._radio_claude)
         provider_row.addWidget(self._radio_groq_ai)
         provider_row.addStretch()
-        provider_vbox.addLayout(provider_row)
+        body_vbox.addLayout(provider_row)
 
-        provider_hint = QLabel("Provider is shared with the AI Assistant below.")
-        provider_hint.setObjectName("hint")
-        provider_hint.setWordWrap(True)
-        provider_vbox.addWidget(provider_hint)
+        self._ai_provider_warning = QLabel()
+        self._ai_provider_warning.setObjectName("model_stale_warning")
+        self._ai_provider_warning.setWordWrap(True)
+        self._ai_provider_warning.setVisible(False)
+        body_vbox.addWidget(self._ai_provider_warning)
 
-        # Contextual API key / model panels
+        # Contextual model panels (API keys live in the API Keys section above)
         self._ai_gemini_widget = QWidget()
         fg = QFormLayout(self._ai_gemini_widget)
         fg.setContentsMargins(0, 0, 0, 0)
@@ -262,24 +317,16 @@ class SettingsTab(QWidget):
         self._gemini_ai_model.setEditable(False)
         self._gemini_ai_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite"])
         fg.addRow("Gemini model:", self._gemini_ai_model)
-        # Gemini key is shared with STT — show a note pointing to STT section
-        key_note = QLabel("API key is set in the Speech-to-Text section above.")
-        key_note.setObjectName("hint")
-        fg.addRow("", key_note)
-        provider_vbox.addWidget(self._ai_gemini_widget)
+        body_vbox.addWidget(self._ai_gemini_widget)
 
         self._ai_claude_widget = QWidget()
         fc = QFormLayout(self._ai_claude_widget)
         fc.setContentsMargins(0, 0, 0, 0)
         self._claude_ai_model = QComboBox()
         self._claude_ai_model.setEditable(False)
-        self._claude_ai_model.addItems(["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"])
+        self._claude_ai_model.addItems(["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"])
         fc.addRow("Claude model:", self._claude_ai_model)
-        self._claude_key = QLineEdit()
-        self._claude_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self._claude_key.setPlaceholderText("sk-ant-…")
-        fc.addRow("Claude API Key:", self._key_row(self._claude_key, self._test_claude))
-        provider_vbox.addWidget(self._ai_claude_widget)
+        body_vbox.addWidget(self._ai_claude_widget)
 
         self._ai_groq_widget = QWidget()
         fgr = QFormLayout(self._ai_groq_widget)
@@ -292,18 +339,7 @@ class SettingsTab(QWidget):
             "mixtral-8x7b-32768",
         ])
         fgr.addRow("Groq model:", self._groq_ai_model)
-        groq_key_note = QLabel("API key is set in the Speech-to-Text section above.")
-        groq_key_note.setObjectName("hint")
-        fgr.addRow("", groq_key_note)
-        provider_vbox.addWidget(self._ai_groq_widget)
-
-        vbox.addWidget(self._ai_provider_widget)
-
-        # Collapsible body — only what is specific to dictation post-processing.
-        self._ai_processing_body = QWidget()
-        body_vbox = QVBoxLayout(self._ai_processing_body)
-        body_vbox.setContentsMargins(0, 4, 0, 0)
-        body_vbox.setSpacing(10)
+        body_vbox.addWidget(self._ai_groq_widget)
 
         # Custom prompt
         prompt_lbl = QLabel("Custom prompt (leave empty to use the feature toggles below):")
@@ -317,6 +353,60 @@ class SettingsTab(QWidget):
             "e.g. Remove filler words. Fix grammar. Keep the original language."
         )
         body_vbox.addWidget(self._ai_custom_prompt)
+
+        # Features — what the processing above actually toggles on the text.
+        self._toggle_fillers = self._feature_row(body_vbox, "Remove Filler Words")
+        self._toggle_grammar = self._feature_row(body_vbox, "Fix Grammar & Punctuation")
+
+        intensity_row = QHBoxLayout()
+        intensity_lbl = QLabel("AI Intensity")
+        intensity_lbl.setFixedWidth(200)
+        self._intensity_slider = QSlider(Qt.Orientation.Horizontal)
+        self._intensity_slider.setMinimum(1)
+        self._intensity_slider.setMaximum(5)
+        self._intensity_slider.setValue(3)
+        self._intensity_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._intensity_slider.setTickInterval(1)
+        self._intensity_slider.setFixedWidth(130)
+        self._intensity_value_lbl = QLabel("3 — Balanced")
+        self._intensity_value_lbl.setObjectName("hint")
+        self._intensity_slider.valueChanged.connect(self._on_intensity_changed)
+        intensity_row.addWidget(intensity_lbl)
+        intensity_row.addWidget(self._intensity_slider)
+        intensity_row.addSpacing(10)
+        intensity_row.addWidget(self._intensity_value_lbl)
+        intensity_row.addStretch()
+        body_vbox.addLayout(intensity_row)
+
+        tr_row = QHBoxLayout()
+        tr_lbl = QLabel("Auto-Translate")
+        tr_lbl.setFixedWidth(200)
+        self._toggle_translate = ToggleSwitch()
+        self._translate_lang = QComboBox()
+        self._translate_lang.addItems(["English", "Polish", "German", "French", "Spanish", "Italian"])
+        self._translate_lang.setFixedWidth(130)
+        tr_row.addWidget(tr_lbl)
+        tr_row.addWidget(self._toggle_translate)
+        tr_row.addSpacing(12)
+        tr_row.addWidget(QLabel("→"))
+        tr_row.addWidget(self._translate_lang)
+        tr_row.addStretch()
+        body_vbox.addLayout(tr_row)
+
+        tone_row = QHBoxLayout()
+        tone_lbl = QLabel("Tone Adjustment")
+        tone_lbl.setFixedWidth(200)
+        self._toggle_tone = ToggleSwitch()
+        self._tone_value = QComboBox()
+        self._tone_value.addItems(["Formal", "Casual", "Professional", "Friendly"])
+        self._tone_value.setFixedWidth(130)
+        tone_row.addWidget(tone_lbl)
+        tone_row.addWidget(self._toggle_tone)
+        tone_row.addSpacing(12)
+        tone_row.addWidget(QLabel("→"))
+        tone_row.addWidget(self._tone_value)
+        tone_row.addStretch()
+        body_vbox.addLayout(tone_row)
 
         latency_note = QLabel(
             "Note: AI processing adds ~0.5–2s latency depending on the provider."
@@ -334,6 +424,11 @@ class SettingsTab(QWidget):
         self._radio_gemini.toggled.connect(self._update_ai_provider_widgets)
         self._radio_claude.toggled.connect(self._update_ai_provider_widgets)
         self._radio_groq_ai.toggled.connect(self._update_ai_provider_widgets)
+        # buttonClicked (not toggled) fires only on a real user click — not on the
+        # programmatic setChecked in _load_values or in the realign method below.
+        self._ai_provider_group.buttonClicked.connect(self._on_ai_provider_touched)
+        self._toggle_translate.toggled.connect(lambda on: self._translate_lang.setEnabled(on))
+        self._toggle_tone.toggled.connect(lambda on: self._tone_value.setEnabled(on))
 
     def _build_assistant_section(self, layout: QVBoxLayout):
         group = QGroupBox("AI Assistant")
@@ -342,13 +437,35 @@ class SettingsTab(QWidget):
 
         intro = QLabel(
             "A second hotkey records a command that the assistant runs and pastes as a "
-            "ready result (e.g. \"write a thank-you email\"). It shares the same AI provider "
-            "as AI Text Processing above (and works independently of whether that is enabled), "
-            "but has its own, independent model — pick it below."
+            "ready result (e.g. \"write a thank-you email\"). It works even when AI Text "
+            "Processing above is off."
         )
         intro.setObjectName("hint")
         intro.setWordWrap(True)
         vbox.addWidget(intro)
+
+        # Own provider choice — independent from AI Text Processing above, so it
+        # needs its own QButtonGroup (otherwise Qt would treat all six radios as
+        # one mutually-exclusive set).
+        provider_row = QHBoxLayout()
+        provider_row.addWidget(QLabel("Provider:"))
+        self._radio_assistant_gemini = QRadioButton("Gemini")
+        self._radio_assistant_claude = QRadioButton("Claude")
+        self._radio_assistant_groq = QRadioButton("Groq")
+        self._assistant_provider_group = QButtonGroup(self)
+        for btn in (self._radio_assistant_gemini, self._radio_assistant_claude, self._radio_assistant_groq):
+            self._assistant_provider_group.addButton(btn)
+        provider_row.addWidget(self._radio_assistant_gemini)
+        provider_row.addWidget(self._radio_assistant_claude)
+        provider_row.addWidget(self._radio_assistant_groq)
+        provider_row.addStretch()
+        vbox.addLayout(provider_row)
+
+        self._assistant_provider_warning = QLabel()
+        self._assistant_provider_warning.setObjectName("model_stale_warning")
+        self._assistant_provider_warning.setWordWrap(True)
+        self._assistant_provider_warning.setVisible(False)
+        vbox.addWidget(self._assistant_provider_warning)
 
         self._assistant_gemini_widget = QWidget()
         fag = QFormLayout(self._assistant_gemini_widget)
@@ -364,7 +481,7 @@ class SettingsTab(QWidget):
         fac.setContentsMargins(0, 0, 0, 0)
         self._assistant_claude_model = QComboBox()
         self._assistant_claude_model.setEditable(False)
-        self._assistant_claude_model.addItems(["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"])
+        self._assistant_claude_model.addItems(["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"])
         fac.addRow("Claude model:", self._assistant_claude_model)
         vbox.addWidget(self._assistant_claude_widget)
 
@@ -409,71 +526,40 @@ class SettingsTab(QWidget):
 
         layout.addWidget(group)
 
-    def _build_features_section(self, layout: QVBoxLayout):
-        group = QGroupBox("Features")
+        self._radio_assistant_gemini.toggled.connect(self._update_assistant_provider_widgets)
+        self._radio_assistant_claude.toggled.connect(self._update_assistant_provider_widgets)
+        self._radio_assistant_groq.toggled.connect(self._update_assistant_provider_widgets)
+
+    def _build_turso_section(self, layout: QVBoxLayout):
+        group = QGroupBox("History Storage")
         vbox = QVBoxLayout(group)
-        vbox.setSpacing(12)
+        vbox.setSpacing(10)
 
-        self._toggle_fillers = self._feature_row(vbox, "Remove Filler Words")
-        self._toggle_grammar = self._feature_row(vbox, "Fix Grammar & Punctuation")
+        toggle_row = QHBoxLayout()
+        lbl = QLabel("Store transcriptions in Turso cloud database")
+        lbl.setFixedWidth(330)
+        self._turso_toggle = ToggleSwitch()
+        toggle_row.addWidget(lbl)
+        toggle_row.addWidget(self._turso_toggle)
+        toggle_row.addStretch()
+        vbox.addLayout(toggle_row)
 
-        # AI Intensity slider
-        intensity_row = QHBoxLayout()
-        intensity_lbl = QLabel("AI Intensity")
-        intensity_lbl.setFixedWidth(200)
-        self._intensity_slider = QSlider(Qt.Orientation.Horizontal)
-        self._intensity_slider.setMinimum(1)
-        self._intensity_slider.setMaximum(5)
-        self._intensity_slider.setValue(3)
-        self._intensity_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self._intensity_slider.setTickInterval(1)
-        self._intensity_slider.setFixedWidth(130)
-        self._intensity_value_lbl = QLabel("3 — Balanced")
-        self._intensity_value_lbl.setObjectName("hint")
-        self._intensity_slider.valueChanged.connect(self._on_intensity_changed)
-        intensity_row.addWidget(intensity_lbl)
-        intensity_row.addWidget(self._intensity_slider)
-        intensity_row.addSpacing(10)
-        intensity_row.addWidget(self._intensity_value_lbl)
-        intensity_row.addStretch()
-        vbox.addLayout(intensity_row)
-
-        # Auto-translate
-        tr_row = QHBoxLayout()
-        tr_lbl = QLabel("Auto-Translate")
-        tr_lbl.setFixedWidth(200)
-        self._toggle_translate = ToggleSwitch()
-        self._translate_lang = QComboBox()
-        self._translate_lang.addItems(["English", "Polish", "German", "French", "Spanish", "Italian"])
-        self._translate_lang.setFixedWidth(130)
-        tr_row.addWidget(tr_lbl)
-        tr_row.addWidget(self._toggle_translate)
-        tr_row.addSpacing(12)
-        tr_row.addWidget(QLabel("→"))
-        tr_row.addWidget(self._translate_lang)
-        tr_row.addStretch()
-        vbox.addLayout(tr_row)
-
-        # Tone adjustment
-        tone_row = QHBoxLayout()
-        tone_lbl = QLabel("Tone Adjustment")
-        tone_lbl.setFixedWidth(200)
-        self._toggle_tone = ToggleSwitch()
-        self._tone_value = QComboBox()
-        self._tone_value.addItems(["Formal", "Casual", "Professional", "Friendly"])
-        self._tone_value.setFixedWidth(130)
-        tone_row.addWidget(tone_lbl)
-        tone_row.addWidget(self._toggle_tone)
-        tone_row.addSpacing(12)
-        tone_row.addWidget(QLabel("→"))
-        tone_row.addWidget(self._tone_value)
-        tone_row.addStretch()
-        vbox.addLayout(tone_row)
+        self._turso_fields = QWidget()
+        f = QFormLayout(self._turso_fields)
+        f.setContentsMargins(0, 0, 0, 0)
+        self._turso_url = QLineEdit()
+        self._turso_url.setPlaceholderText("libsql://mydb-org.turso.io")
+        f.addRow("Turso DB URL:", self._turso_url)
+        self._turso_token = QLineEdit()
+        self._turso_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self._turso_token.setPlaceholderText("auth token…")
+        f.addRow("Auth Token:", self._key_row(self._turso_token, self._test_turso))
+        vbox.addWidget(self._turso_fields)
 
         layout.addWidget(group)
-
-        self._toggle_translate.toggled.connect(lambda on: self._translate_lang.setEnabled(on))
-        self._toggle_tone.toggled.connect(lambda on: self._tone_value.setEnabled(on))
+        self._turso_toggle.toggled.connect(
+            lambda on: self._turso_fields.setVisible(on)
+        )
 
     def _build_system_section(self, layout: QVBoxLayout):
         group = QGroupBox("System")
@@ -604,39 +690,200 @@ class SettingsTab(QWidget):
                 self._download_status.setText("Model loaded ✓")
 
     def _update_ai_provider_widgets(self):
-        gemini = self._radio_gemini.isChecked()
-        claude = self._radio_claude.isChecked()
-        groq = self._radio_groq_ai.isChecked()
-        self._ai_gemini_widget.setVisible(gemini)
-        self._ai_claude_widget.setVisible(claude)
-        self._ai_groq_widget.setVisible(groq)
-        self._assistant_gemini_widget.setVisible(gemini)
-        self._assistant_claude_widget.setVisible(claude)
-        self._assistant_groq_widget.setVisible(groq)
+        self._ai_gemini_widget.setVisible(self._radio_gemini.isChecked())
+        self._ai_claude_widget.setVisible(self._radio_claude.isChecked())
+        self._ai_groq_widget.setVisible(self._radio_groq_ai.isChecked())
+        self._refresh_provider_warnings()
 
-    def apply_discovered_models(self, provider: str, payload):
+    def _update_assistant_provider_widgets(self):
+        self._assistant_gemini_widget.setVisible(self._radio_assistant_gemini.isChecked())
+        self._assistant_claude_widget.setVisible(self._radio_assistant_claude.isChecked())
+        self._assistant_groq_widget.setVisible(self._radio_assistant_groq.isChecked())
+        self._refresh_provider_warnings()
+
+    _PROVIDER_LABELS = {"gemini": "Gemini", "claude": "Claude", "groq": "Groq"}
+    # Preference order for auto-realign when nothing has been deliberately chosen yet —
+    # groq first, since the free tier is this project's default track. Shared by the
+    # Assistant and AI Text Processing realigns/initial load.
+    _PROVIDER_ORDER = ("groq", "gemini", "claude")
+    # Same idea for Speech-to-Text, which only groq and gemini support in this app.
+    _STT_PROVIDER_ORDER = ("groq", "gemini")
+
+    def _current_ai_provider(self) -> str:
+        if self._radio_claude.isChecked():
+            return "claude"
+        if self._radio_groq_ai.isChecked():
+            return "groq"
+        return "gemini"
+
+    def _current_assistant_provider(self) -> str:
+        if self._radio_assistant_claude.isChecked():
+            return "claude"
+        if self._radio_assistant_groq.isChecked():
+            return "groq"
+        return "gemini"
+
+    def _missing_key_warning(self, provider: str) -> str:
+        field = {"gemini": self._gemini_key, "claude": self._claude_key, "groq": self._groq_key}.get(provider)
+        if field is None or field.text().strip():
+            return ""
+        label = self._PROVIDER_LABELS.get(provider, provider.capitalize())
+        return f"No {label} API key yet — add one in the API Keys section above."
+
+    def _refresh_provider_warnings(self):
+        # A fresh install with no key typed anywhere yet doesn't need a red warning —
+        # the API Keys section right above is already the obvious next step.
+        any_key = bool(
+            self._gemini_key.text().strip()
+            or self._groq_key.text().strip()
+            or self._claude_key.text().strip()
+        )
+        text = self._missing_key_warning(self._current_ai_provider()) if any_key else ""
+        self._ai_provider_warning.setText(text)
+        self._ai_provider_warning.setVisible(bool(text))
+        text = self._missing_key_warning(self._current_assistant_provider()) if any_key else ""
+        self._assistant_provider_warning.setText(text)
+        self._assistant_provider_warning.setVisible(bool(text))
+
+    def _on_stt_provider_touched(self, _index=None):
+        self._stt_provider_user_touched = True
+
+    def _on_ai_provider_touched(self, _button=None):
+        self._ai_provider_user_touched = True
+
+    def _key_field_cleared(self) -> bool:
+        """Realigning is for "a key appeared", not "a key vanished" — otherwise clearing
+        a field to paste a new key silently moves the provider somewhere else and the
+        refilled key no longer brings it back."""
+        sender = self.sender()
+        return isinstance(sender, QLineEdit) and not sender.text().strip()
+
+    def _maybe_realign_stt_provider(self):
+        """Same idea as _maybe_realign_assistant_provider, for the Speech-to-Text
+        provider combo. stt_provider has no "" (inherit) sentinel — it always holds a
+        real value, even a fresh install's untouched schema default — so "not yet
+        deliberately chosen" is tracked with _stt_provider_user_touched instead, set
+        only by the combo's own `activated` (real user interaction, never _load_values
+        or the setCurrentIndex below). "local" needs no key and is left alone."""
+        if self._loading or self._stt_provider_user_touched or self._key_field_cleared():
+            return
+        current = self._stt_provider_combo.currentData()
+        if current == "local":
+            return
+        keys = {"groq": self._groq_key.text().strip(), "gemini": self._gemini_key.text().strip()}
+        if keys.get(current):
+            return
+        target = next((p for p in self._STT_PROVIDER_ORDER if keys[p]), None)
+        if not target:
+            return
+        idx = self._stt_provider_combo.findData(target)
+        if idx < 0:
+            return
+        self._stt_provider_combo.blockSignals(True)
+        self._stt_provider_combo.setCurrentIndex(idx)
+        self._stt_provider_combo.blockSignals(False)
+        self._on_stt_provider_changed()
+
+    def _maybe_realign_ai_provider(self):
+        """Same idea as _maybe_realign_assistant_provider, for the AI Text Processing
+        provider radios. ai_model_provider has no "" (inherit) sentinel either, so
+        this is guarded by _ai_provider_user_touched instead, set only by the button
+        group's own buttonClicked (real user click, never _load_values or the
+        setChecked below)."""
+        if self._loading or self._ai_provider_user_touched or self._key_field_cleared():
+            return
+        keys = {
+            "groq": self._groq_key.text().strip(),
+            "gemini": self._gemini_key.text().strip(),
+            "claude": self._claude_key.text().strip(),
+        }
+        if keys[self._current_ai_provider()]:
+            return
+        target = next((p for p in self._PROVIDER_ORDER if keys[p]), None)
+        if not target:
+            return
+        radios = (self._radio_gemini, self._radio_claude, self._radio_groq_ai)
+        target_radio = {
+            "gemini": self._radio_gemini,
+            "claude": self._radio_claude,
+            "groq": self._radio_groq_ai,
+        }[target]
+        for r in radios:
+            r.blockSignals(True)
+        target_radio.setChecked(True)
+        for r in radios:
+            r.blockSignals(False)
+        self._update_ai_provider_widgets()
+
+    def _maybe_realign_assistant_provider(self):
+        """Wired to the key fields' textChanged only — never to the radio buttons — so
+        this reacts purely to a key appearing and a deliberate radio click always sticks.
+        Never touches an explicit saved choice (config.assistant_model_provider)."""
+        if (self._loading or self._settings.config.assistant_model_provider
+                or self._key_field_cleared()):
+            return
+        keys = {
+            "groq": self._groq_key.text().strip(),
+            "gemini": self._gemini_key.text().strip(),
+            "claude": self._claude_key.text().strip(),
+        }
+        if keys[self._current_assistant_provider()]:
+            return
+        target = next((p for p in self._PROVIDER_ORDER if keys[p]), None)
+        if not target:
+            return
+        radios = (self._radio_assistant_gemini, self._radio_assistant_claude, self._radio_assistant_groq)
+        target_radio = {
+            "gemini": self._radio_assistant_gemini,
+            "claude": self._radio_assistant_claude,
+            "groq": self._radio_assistant_groq,
+        }[target]
+        for r in radios:
+            r.blockSignals(True)
+        target_radio.setChecked(True)
+        for r in radios:
+            r.blockSignals(False)
+        self._update_assistant_provider_widgets()
+
+    def apply_discovered_models(self, provider: str, payload, healed: dict[str, str] | None = None):
         if provider == "gemini":
             for combo in (self._stt_model, self._gemini_ai_model, self._assistant_gemini_model):
-                self._repopulate_combo(combo, payload)
+                self._repopulate_combo(combo, payload, healed)
         elif provider == "claude":
             for combo in (self._claude_ai_model, self._assistant_claude_model):
-                self._repopulate_combo(combo, payload)
+                self._repopulate_combo(combo, payload, healed)
         elif provider == "groq":
-            self._repopulate_combo(self._groq_stt_model, payload["stt"])
+            self._repopulate_combo(self._groq_stt_model, payload["stt"], healed)
             for combo in (self._groq_ai_model, self._assistant_groq_model):
-                self._repopulate_combo(combo, payload["chat"])
+                self._repopulate_combo(combo, payload["chat"], healed)
 
-    def _repopulate_combo(self, combo: QComboBox, fresh_items: list[str]):
+    def _repopulate_combo(
+        self, combo: QComboBox, fresh_items: list[str], healed: dict[str, str] | None = None
+    ):
         if not fresh_items:
             return
-        saved = combo.currentText()
+        field = self._model_fields.get(combo)
+        current = combo.currentText()
+        # An unsaved pick the provider still offers wins; otherwise fall back to the
+        # config, which is where auto-healing writes a replacement for a dead model.
+        if current in fresh_items or not field:
+            saved = current
+        else:
+            saved = getattr(self._settings.config, field)
         combo.blockSignals(True)
         combo.clear()
         combo.addItems(fresh_items)
         idx = combo.findText(saved)
         if idx >= 0:
             combo.setCurrentIndex(idx)
-            self._set_model_status(combo, ok_text="Model list updated from the provider's API.")
+            healed_from = (healed or {}).get(field) if field else None
+            if healed_from:
+                self._set_model_status(
+                    combo,
+                    warn_text=f'Auto-switched: "{healed_from}" is no longer offered by the provider.',
+                )
+            else:
+                self._set_model_status(combo, ok_text="Model list updated from the provider's API.")
         else:
             combo.insertItem(0, saved)
             combo.setCurrentIndex(0)
@@ -776,7 +1023,25 @@ class SettingsTab(QWidget):
 
     # ── Load / Save ───────────────────────────────────────────────────────────
 
+    def _select_model(self, combo: QComboBox, value: str):
+        """Non-editable combos silently ignore setCurrentText for values outside the list,
+        so a model healed from the live API would fall back to item 0 and be re-saved."""
+        if not value:
+            return
+        idx = combo.findText(value)
+        if idx < 0:
+            combo.insertItem(0, value)
+            idx = 0
+        combo.setCurrentIndex(idx)
+
     def _load_values(self):
+        self._loading = True
+        try:
+            self._load_values_impl()
+        finally:
+            self._loading = False
+
+    def _load_values_impl(self):
         cfg = self._settings.config
 
         # Hotkey
@@ -786,16 +1051,52 @@ class SettingsTab(QWidget):
         # Assistant
         self._assistant_prompt.setPlainText(cfg.assistant_prompt)
         self._assistant_clipboard_toggle.setChecked(cfg.assistant_use_clipboard)
-        self._assistant_gemini_model.setCurrentText(cfg.assistant_gemini_model)
-        self._assistant_claude_model.setCurrentText(cfg.assistant_claude_model)
-        self._assistant_groq_model.setCurrentText(cfg.assistant_groq_model)
+        self._select_model(self._assistant_gemini_model, cfg.assistant_gemini_model)
+        self._select_model(self._assistant_claude_model, cfg.assistant_claude_model)
+        self._select_model(self._assistant_groq_model, cfg.assistant_groq_model)
+
+        # Same resolution order as Pipeline._run_assistant: explicit choice wins; else the
+        # inherited (dictation) provider if it has a key; else the first provider that has
+        # a key at all (groq first — the free tier is this project's default track); else
+        # leave it as ai_model_provider, same as before.
+        provider_keys = {
+            "groq": cfg.groq_api_key,
+            "gemini": cfg.gemini_api_key,
+            "claude": cfg.claude_api_key,
+        }
+        if cfg.assistant_model_provider:
+            assistant_provider = cfg.assistant_model_provider
+        elif provider_keys.get(cfg.ai_model_provider):
+            assistant_provider = cfg.ai_model_provider
+        else:
+            assistant_provider = next(
+                (p for p in ("groq", "gemini", "claude") if provider_keys.get(p)),
+                cfg.ai_model_provider,
+            )
+        if assistant_provider == "claude":
+            self._radio_assistant_claude.setChecked(True)
+        elif assistant_provider == "groq":
+            self._radio_assistant_groq.setChecked(True)
+        else:
+            self._radio_assistant_gemini.setChecked(True)
+        self._update_assistant_provider_widgets()
 
         # STT
-        idx = self._stt_provider_combo.findData(cfg.stt_provider)
+        # Same idea as the assistant resolution above, 2-way (Claude has no STT here):
+        # configured provider if it has a key, else the first of groq/gemini that does;
+        # else leave it as stt_provider. Computed directly from cfg (not the realign
+        # method, which _loading blocks right now) so the initial pick doesn't depend on
+        # the order the key fields below happen to populate in.
+        stt_keys = {"groq": cfg.groq_api_key, "gemini": cfg.gemini_api_key}
+        if cfg.stt_provider == "local" or stt_keys.get(cfg.stt_provider):
+            stt_provider = cfg.stt_provider
+        else:
+            stt_provider = next((p for p in self._STT_PROVIDER_ORDER if stt_keys.get(p)), cfg.stt_provider)
+        idx = self._stt_provider_combo.findData(stt_provider)
         self._stt_provider_combo.setCurrentIndex(idx if idx >= 0 else 0)
-        self._stt_model.setCurrentText(cfg.stt_model)
+        self._select_model(self._stt_model, cfg.stt_model)
         self._gemini_key.setText(cfg.gemini_api_key)
-        self._groq_stt_model.setCurrentText(cfg.groq_stt_model)
+        self._select_model(self._groq_stt_model, cfg.groq_stt_model)
         self._groq_key.setText(cfg.groq_api_key)
         for i in range(self._local_model_combo.count()):
             if self._local_model_combo.itemData(i) == cfg.local_whisper_model:
@@ -814,17 +1115,25 @@ class SettingsTab(QWidget):
         self._ai_processing_body.setVisible(cfg.ai_processing_enabled)
         self._ai_custom_prompt.setPlainText(cfg.ai_custom_prompt)
 
-        if cfg.ai_model_provider == "claude":
+        # Same cascade as STT above, full three-way groq/gemini/claude — computed
+        # directly from cfg for the same reason: correctness must not depend on the
+        # order _gemini_key/_groq_key/_claude_key happen to populate in below.
+        ai_keys = {"groq": cfg.groq_api_key, "gemini": cfg.gemini_api_key, "claude": cfg.claude_api_key}
+        if ai_keys.get(cfg.ai_model_provider):
+            ai_provider = cfg.ai_model_provider
+        else:
+            ai_provider = next((p for p in self._PROVIDER_ORDER if ai_keys.get(p)), cfg.ai_model_provider)
+        if ai_provider == "claude":
             self._radio_claude.setChecked(True)
-        elif cfg.ai_model_provider == "groq":
+        elif ai_provider == "groq":
             self._radio_groq_ai.setChecked(True)
         else:
             self._radio_gemini.setChecked(True)
 
-        self._gemini_ai_model.setCurrentText(cfg.gemini_ai_model)
-        self._claude_ai_model.setCurrentText(cfg.claude_ai_model)
+        self._select_model(self._gemini_ai_model, cfg.gemini_ai_model)
+        self._select_model(self._claude_ai_model, cfg.claude_ai_model)
         self._claude_key.setText(cfg.claude_api_key)
-        self._groq_ai_model.setCurrentText(cfg.groq_ai_model)
+        self._select_model(self._groq_ai_model, cfg.groq_ai_model)
         self._update_ai_provider_widgets()
 
         # Features
@@ -860,6 +1169,26 @@ class SettingsTab(QWidget):
         s.set("assistant_gemini_model", self._assistant_gemini_model.currentText())
         s.set("assistant_claude_model", self._assistant_claude_model.currentText())
         s.set("assistant_groq_model", self._assistant_groq_model.currentText())
+
+        if self._radio_assistant_claude.isChecked():
+            assistant_provider = "claude"
+        elif self._radio_assistant_groq.isChecked():
+            assistant_provider = "groq"
+        else:
+            assistant_provider = "gemini"
+        provider_keys = {
+            "groq": self._groq_key.text().strip(),
+            "gemini": self._gemini_key.text().strip(),
+            "claude": self._claude_key.text().strip(),
+        }
+        if not provider_keys[assistant_provider]:
+            # Selected provider has no key (whether or not another one does) — persist ""
+            # (inherit) rather than lock in a choice we already know would hard-error at
+            # runtime, and rather than freeze out _maybe_realign_assistant_provider the
+            # instant a key is pasted later (its guard is "assistant_model_provider is
+            # already explicit", which a saved real provider name would trip forever).
+            assistant_provider = ""
+        s.set("assistant_model_provider", assistant_provider)
 
         # STT
         s.set("stt_provider",        self._stt_provider_combo.currentData())

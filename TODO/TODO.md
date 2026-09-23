@@ -10,6 +10,14 @@
 ## Backlog
 > Pomysły i zadania na później. Bez kolejności — przenosisz do „Aktywnego fokusu", gdy wchodzą do realizacji.
 
+### Settings — drobiazgi z review v1.3.0
+- [ ] **Ostrzeżenie o braku klucza w sekcji Speech-to-Text.** Dwie sekcje AI mają już czerwony
+  label pod wyborem providera, STT nie ma. Przy samym kluczu Claude STT zostaje na „Gemini"
+  bez sygnału, a pierwsze dyktowanie odsyła po klucz, nie mówiąc, że Claude w ogóle nie robi
+  transkrypcji. Treść w stylu: „Claude does not do transcription — pick Groq, Gemini or Local."
+- [ ] **Etykieta „Gemini (default)" w liście providerów STT.** Przeczy zdaniu o Groqu dwa wiersze
+  wyżej i temu, co apka sama robi po wklejeniu klucza Groq.
+
 ### Onboarding / dystrybucja
 - [ ] **Instrukcja krok po kroku: najprostsze uruchomienie z modelem Groq.**
   Groq jest najsprawniejszy (najszybsze STT + darmowy tier) i jest domyślnym torem.

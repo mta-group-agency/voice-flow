@@ -30,6 +30,13 @@ _MIN_AUDIO_DURATION = 0.3  # seconds
 _MODE_DICTATION = "dictation"
 _MODE_ASSISTANT = "assistant"
 _ASSISTANT_CONTEXT_LIMIT = 8000
+# Fallback order when a provider is inherited/default and has no key — groq first,
+# since the free tier is this project's default track. Shared by the assistant and
+# dictation post-processing (both can use any of the three providers).
+_PROVIDER_FALLBACK_ORDER = ("groq", "gemini", "claude")
+# Same idea for speech-to-text, which only groq and gemini support in this app —
+# ClaudeClient.transcribe() raises NotImplementedError.
+_STT_PROVIDER_FALLBACK = ("groq", "gemini")
 
 
 class State(Enum):
@@ -181,13 +188,37 @@ class Pipeline(QObject):
         ai_model = cfg.assistant_groq_model if for_assistant else cfg.groq_ai_model
         return GroqClient(cfg.groq_api_key, cfg.groq_stt_model, ai_model)
 
-    def _make_stt_client(self):
+    def _resolve_stt_provider(self) -> str | None:
+        """Configured provider if it has a key; else the first of groq/gemini that does
+        (groq first — the free tier is this project's default track); else None.
+        "local" needs no key and passes straight through untouched."""
         cfg = self._settings.config
-        if cfg.stt_provider == "groq" and cfg.groq_api_key:
-            return self._make_groq()
         if cfg.stt_provider == "local":
-            return LocalWhisperClient(cfg.local_whisper_model)
-        return self._make_gemini()
+            return "local"
+        keys = {"groq": cfg.groq_api_key, "gemini": cfg.gemini_api_key}
+        if keys.get(cfg.stt_provider):
+            return cfg.stt_provider
+        return next((p for p in _STT_PROVIDER_FALLBACK if keys.get(p)), None)
+
+    def _resolve_text_provider(self) -> str | None:
+        """Same cascade as _resolve_stt_provider, for dictation post-processing —
+        configured provider if it has a key, else the first of groq/gemini/claude
+        that does; else None."""
+        cfg = self._settings.config
+        keys = {"groq": cfg.groq_api_key, "gemini": cfg.gemini_api_key, "claude": cfg.claude_api_key}
+        if keys.get(cfg.ai_model_provider):
+            return cfg.ai_model_provider
+        return next((p for p in _PROVIDER_FALLBACK_ORDER if keys.get(p)), None)
+
+    def _make_stt_client(self):
+        provider = self._resolve_stt_provider()
+        if provider == "local":
+            return LocalWhisperClient(self._settings.config.local_whisper_model)
+        if provider == "groq":
+            return self._make_groq()
+        if provider == "gemini":
+            return self._make_gemini()
+        return None
 
     def _build_processing_config(self, raw_text: str) -> tuple[str, ProcessingConfig]:
         cfg = self._settings.config
@@ -276,20 +307,23 @@ class Pipeline(QObject):
         self._last_wav = wav_bytes
         self._last_duration = duration
 
-        cfg = self._settings.config
         _, proc_config = self._build_processing_config("")
         any_feature = bool(
             proc_config.remove_fillers or proc_config.fix_grammar
             or proc_config.translation_target or proc_config.tone
         )
-        # Combined Gemini call only when both STT and AI processing use Gemini.
-        # Assistant mode always transcribes separately so the raw command is
-        # available for the assistant call.
+        stt_provider = self._resolve_stt_provider()
+        text_provider = self._resolve_text_provider() if any_feature else None
+        # Combined Gemini call only when both STT and AI processing actually resolve
+        # to Gemini — checked against the resolved provider, not the raw config, so a
+        # cascade to another provider can't be bypassed by this shortcut. Assistant
+        # mode always transcribes separately so the raw command is available for the
+        # assistant call.
         use_combined = (
             self._mode == _MODE_DICTATION
             and any_feature
-            and cfg.stt_provider == "gemini"
-            and cfg.ai_model_provider == "gemini"
+            and stt_provider == "gemini"
+            and text_provider == "gemini"
         )
         audio_s = duration
 
@@ -307,6 +341,12 @@ class Pipeline(QObject):
             )
         else:
             stt = self._make_stt_client()
+            if stt is None:
+                self._set_state(State.IDLE)
+                self.error_occurred.emit(
+                    "No API key configured for speech-to-text. Add one in Settings → API Keys."
+                )
+                return
             worker = _Worker(
                 stt.transcribe,
                 wav_bytes,
@@ -346,9 +386,19 @@ class Pipeline(QObject):
             self._on_ai_done(raw_text=raw_text, final_text=text, cost=stt_cost)
             return
 
-        if cfg.ai_model_provider == "claude" and cfg.claude_api_key:
+        provider = self._resolve_text_provider()
+        if provider is None:
+            # Never drop what the user already said — paste it raw and say why it
+            # skipped the cleanup (local Whisper needs no key, post-processing does).
+            self.error_occurred.emit(
+                "Pasted without AI cleanup — no API key for text processing. "
+                "Add one in Settings → API Keys."
+            )
+            self._on_ai_done(raw_text=raw_text, final_text=text, cost=stt_cost)
+            return
+        if provider == "claude":
             client = self._make_claude()
-        elif cfg.ai_model_provider == "groq" and cfg.groq_api_key:
+        elif provider == "groq":
             client = self._make_groq()
         else:
             client = self._make_gemini()
@@ -386,9 +436,32 @@ class Pipeline(QObject):
         else:
             stt_cost = GeminiClient.estimate_cost(audio_s, len(command))
 
-        if cfg.ai_model_provider == "claude" and cfg.claude_api_key:
+        provider_keys = {
+            "claude": cfg.claude_api_key,
+            "groq": cfg.groq_api_key,
+            "gemini": cfg.gemini_api_key,
+        }
+        if cfg.assistant_model_provider:
+            provider = cfg.assistant_model_provider
+            if not provider_keys.get(provider):
+                self._set_state(State.IDLE)
+                self.error_occurred.emit(
+                    f"No API key for {provider.capitalize()}. Add it in Settings → API Keys, "
+                    "or pick a provider you have a key for in Settings → AI Assistant."
+                )
+                return
+        elif provider_keys.get(cfg.ai_model_provider):
+            provider = cfg.ai_model_provider
+        else:
+            provider = next((p for p in _PROVIDER_FALLBACK_ORDER if provider_keys.get(p)), None)
+            if provider is None:
+                self._set_state(State.IDLE)
+                self.error_occurred.emit("No API key configured. Add one in Settings → API Keys.")
+                return
+
+        if provider == "claude":
             client = self._make_claude(for_assistant=True)
-        elif cfg.ai_model_provider == "groq" and cfg.groq_api_key:
+        elif provider == "groq":
             client = self._make_groq(for_assistant=True)
         else:
             client = self._make_gemini(for_assistant=True)
@@ -429,6 +502,12 @@ class Pipeline(QObject):
         self.transcription_ready.emit(final_text)
         self._set_state(State.IDLE)
 
+        cfg = self._settings.config
+        if self._mode == _MODE_ASSISTANT:
+            ai_provider = cfg.assistant_model_provider or cfg.ai_model_provider
+        else:
+            ai_provider = cfg.ai_model_provider
+
         # DB insert in background so it doesn't block the main thread
         entry = TranscriptionEntry(
             raw_text=raw_text,
@@ -436,7 +515,7 @@ class Pipeline(QObject):
             duration_s=getattr(self, "_last_duration", 0.0),
             audio_s=getattr(self, "_last_duration", 0.0),
             char_count=len(final_text),
-            ai_provider=self._settings.config.ai_model_provider,
+            ai_provider=ai_provider,
             cost_usd=cost,
         )
 
