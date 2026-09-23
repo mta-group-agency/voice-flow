@@ -291,6 +291,7 @@ QLabel#section_label {{
     letter-spacing: 1.2px; background: transparent;
 }}
 QLabel#hint {{ color: {t['text_4']}; font-size: 11px; background: transparent; }}
+QLabel#model_stale_warning {{ color: {t['danger']}; font-size: 11px; background: transparent; }}
 QLabel#form_label {{ color: {t['text_2']}; font-size: 12px; font-weight: 500; background: transparent; }}
 QLabel#meta_label {{
     color: {t['text_4']}; font-size: 11px;

@@ -10,6 +10,7 @@ from voiceflow.core.pipeline import Pipeline, State
 from voiceflow.storage.history_db import HistoryDB
 from voiceflow.ui import theme as vf_theme
 from voiceflow.ui.main_window import MainWindow
+from voiceflow.ui.model_discovery import ModelDiscoveryWorker
 from voiceflow.ui.overlay import RecordingOverlay
 from voiceflow.ui.tray import TrayManager
 from voiceflow.ui.update_banner import ReleaseNotesWorker, UpdateCheckWorker
@@ -40,6 +41,14 @@ class VoiceFlowApp:
         self._overlay = RecordingOverlay()
         self._tray = TrayManager(qt_app, self._window, self._pipeline)
 
+        if self._settings.last_migrations:
+            pairs = sorted({(old, new) for _, old, new in self._settings.last_migrations})
+            changes = ", ".join(f'"{old}" -> "{new}"' for old, new in pairs)
+            self._tray.notify(
+                "VoiceFlow — AI model updated",
+                f"A discontinued provider model was detected and switched to a current one: {changes}.",
+            )
+
         self._window.show()
         self._run_onboarding(cfg)
 
@@ -57,6 +66,12 @@ class VoiceFlowApp:
         self._update_worker = UpdateCheckWorker()
         self._update_worker.update_found.connect(self._on_update_found)
         self._update_worker.start()
+
+        self._model_worker = ModelDiscoveryWorker(
+            cfg.gemini_api_key, cfg.claude_api_key, cfg.groq_api_key,
+        )
+        self._model_worker.provider_models_ready.connect(self._window.apply_discovered_models)
+        self._model_worker.start()
 
     def _on_state_changed(self, state: State):
         if state == State.RECORDING:

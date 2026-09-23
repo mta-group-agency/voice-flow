@@ -7,6 +7,7 @@ from voiceflow.config.schema import ProcessingConfig
 
 _STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 _CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+_MODELS_URL = "https://api.groq.com/openai/v1/models"
 _TIMEOUT = 30
 _RETRYABLE = {429, 500, 502, 503, 504}
 
@@ -127,3 +128,19 @@ class GroqClient(BaseAIClient):
         audio_cost = audio_seconds * 0.04 / 3600
         llm_cost = (output_chars / 4) * 0.79 / 1_000_000
         return audio_cost + llm_cost
+
+    def list_models(self) -> list[str]:
+        if not self.api_key:
+            return []
+        try:
+            resp = requests.get(_MODELS_URL, headers=self._auth(), timeout=8)
+            resp.raise_for_status()
+            return sorted(m["id"] for m in resp.json().get("data", []))
+        except (requests.RequestException, KeyError, ValueError):
+            return []
+
+    @staticmethod
+    def split_stt_and_chat(model_ids: list[str]) -> tuple[list[str], list[str]]:
+        stt = [m for m in model_ids if "whisper" in m.lower()]
+        chat = [m for m in model_ids if "whisper" not in m.lower() and "tts" not in m.lower()]
+        return stt, chat

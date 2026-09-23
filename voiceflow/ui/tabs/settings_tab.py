@@ -113,7 +113,7 @@ class SettingsTab(QWidget):
         f.setContentsMargins(0, 0, 0, 0)
         self._stt_model = QComboBox()
         self._stt_model.setEditable(False)
-        self._stt_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"])
+        self._stt_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite"])
         f.addRow("Model:", self._stt_model)
         self._gemini_key = QLineEdit()
         self._gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -230,7 +230,76 @@ class SettingsTab(QWidget):
         toggle_row.addStretch()
         vbox.addLayout(toggle_row)
 
-        # Collapsible body
+        # Always-visible: provider selection + model/key panels. These are not
+        # gated by the toggle above because the AI Assistant (below) reads the
+        # same provider/key regardless of whether dictation post-processing is on.
+        self._ai_provider_widget = QWidget()
+        provider_vbox = QVBoxLayout(self._ai_provider_widget)
+        provider_vbox.setContentsMargins(0, 4, 0, 0)
+        provider_vbox.setSpacing(10)
+
+        provider_row = QHBoxLayout()
+        provider_row.addWidget(QLabel("Provider:"))
+        self._radio_gemini = QRadioButton("Gemini")
+        self._radio_claude = QRadioButton("Claude")
+        self._radio_groq_ai = QRadioButton("Groq")
+        provider_row.addWidget(self._radio_gemini)
+        provider_row.addWidget(self._radio_claude)
+        provider_row.addWidget(self._radio_groq_ai)
+        provider_row.addStretch()
+        provider_vbox.addLayout(provider_row)
+
+        provider_hint = QLabel("Provider is shared with the AI Assistant below.")
+        provider_hint.setObjectName("hint")
+        provider_hint.setWordWrap(True)
+        provider_vbox.addWidget(provider_hint)
+
+        # Contextual API key / model panels
+        self._ai_gemini_widget = QWidget()
+        fg = QFormLayout(self._ai_gemini_widget)
+        fg.setContentsMargins(0, 0, 0, 0)
+        self._gemini_ai_model = QComboBox()
+        self._gemini_ai_model.setEditable(False)
+        self._gemini_ai_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite"])
+        fg.addRow("Gemini model:", self._gemini_ai_model)
+        # Gemini key is shared with STT — show a note pointing to STT section
+        key_note = QLabel("API key is set in the Speech-to-Text section above.")
+        key_note.setObjectName("hint")
+        fg.addRow("", key_note)
+        provider_vbox.addWidget(self._ai_gemini_widget)
+
+        self._ai_claude_widget = QWidget()
+        fc = QFormLayout(self._ai_claude_widget)
+        fc.setContentsMargins(0, 0, 0, 0)
+        self._claude_ai_model = QComboBox()
+        self._claude_ai_model.setEditable(False)
+        self._claude_ai_model.addItems(["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"])
+        fc.addRow("Claude model:", self._claude_ai_model)
+        self._claude_key = QLineEdit()
+        self._claude_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._claude_key.setPlaceholderText("sk-ant-…")
+        fc.addRow("Claude API Key:", self._key_row(self._claude_key, self._test_claude))
+        provider_vbox.addWidget(self._ai_claude_widget)
+
+        self._ai_groq_widget = QWidget()
+        fgr = QFormLayout(self._ai_groq_widget)
+        fgr.setContentsMargins(0, 0, 0, 0)
+        self._groq_ai_model = QComboBox()
+        self._groq_ai_model.setEditable(False)
+        self._groq_ai_model.addItems([
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+        ])
+        fgr.addRow("Groq model:", self._groq_ai_model)
+        groq_key_note = QLabel("API key is set in the Speech-to-Text section above.")
+        groq_key_note.setObjectName("hint")
+        fgr.addRow("", groq_key_note)
+        provider_vbox.addWidget(self._ai_groq_widget)
+
+        vbox.addWidget(self._ai_provider_widget)
+
+        # Collapsible body — only what is specific to dictation post-processing.
         self._ai_processing_body = QWidget()
         body_vbox = QVBoxLayout(self._ai_processing_body)
         body_vbox.setContentsMargins(0, 4, 0, 0)
@@ -256,61 +325,6 @@ class SettingsTab(QWidget):
         latency_note.setWordWrap(True)
         body_vbox.addWidget(latency_note)
 
-        # AI provider
-        provider_row = QHBoxLayout()
-        provider_row.addWidget(QLabel("Provider:"))
-        self._radio_gemini = QRadioButton("Gemini")
-        self._radio_claude = QRadioButton("Claude")
-        self._radio_groq_ai = QRadioButton("Groq")
-        provider_row.addWidget(self._radio_gemini)
-        provider_row.addWidget(self._radio_claude)
-        provider_row.addWidget(self._radio_groq_ai)
-        provider_row.addStretch()
-        body_vbox.addLayout(provider_row)
-
-        # Contextual API key / model panels
-        self._ai_gemini_widget = QWidget()
-        fg = QFormLayout(self._ai_gemini_widget)
-        fg.setContentsMargins(0, 0, 0, 0)
-        self._gemini_ai_model = QComboBox()
-        self._gemini_ai_model.setEditable(False)
-        self._gemini_ai_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"])
-        fg.addRow("Gemini model:", self._gemini_ai_model)
-        # Gemini key is shared with STT — show a note pointing to STT section
-        key_note = QLabel("API key is set in the Speech-to-Text section above.")
-        key_note.setObjectName("hint")
-        fg.addRow("", key_note)
-        body_vbox.addWidget(self._ai_gemini_widget)
-
-        self._ai_claude_widget = QWidget()
-        fc = QFormLayout(self._ai_claude_widget)
-        fc.setContentsMargins(0, 0, 0, 0)
-        self._claude_ai_model = QComboBox()
-        self._claude_ai_model.setEditable(False)
-        self._claude_ai_model.addItems(["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"])
-        fc.addRow("Claude model:", self._claude_ai_model)
-        self._claude_key = QLineEdit()
-        self._claude_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self._claude_key.setPlaceholderText("sk-ant-…")
-        fc.addRow("Claude API Key:", self._key_row(self._claude_key, self._test_claude))
-        body_vbox.addWidget(self._ai_claude_widget)
-
-        self._ai_groq_widget = QWidget()
-        fgr = QFormLayout(self._ai_groq_widget)
-        fgr.setContentsMargins(0, 0, 0, 0)
-        self._groq_ai_model = QComboBox()
-        self._groq_ai_model.setEditable(False)
-        self._groq_ai_model.addItems([
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
-        ])
-        fgr.addRow("Groq model:", self._groq_ai_model)
-        groq_key_note = QLabel("API key is set in the Speech-to-Text section above.")
-        groq_key_note.setObjectName("hint")
-        fgr.addRow("", groq_key_note)
-        body_vbox.addWidget(self._ai_groq_widget)
-
         vbox.addWidget(self._ai_processing_body)
         layout.addWidget(group)
 
@@ -328,12 +342,44 @@ class SettingsTab(QWidget):
 
         intro = QLabel(
             "A second hotkey records a command that the assistant runs and pastes as a "
-            "ready result (e.g. \"write a thank-you email\"). It uses the same AI provider "
-            "as text processing above and works independently of whether that is enabled."
+            "ready result (e.g. \"write a thank-you email\"). It shares the same AI provider "
+            "as AI Text Processing above (and works independently of whether that is enabled), "
+            "but has its own, independent model — pick it below."
         )
         intro.setObjectName("hint")
         intro.setWordWrap(True)
         vbox.addWidget(intro)
+
+        self._assistant_gemini_widget = QWidget()
+        fag = QFormLayout(self._assistant_gemini_widget)
+        fag.setContentsMargins(0, 0, 0, 0)
+        self._assistant_gemini_model = QComboBox()
+        self._assistant_gemini_model.setEditable(False)
+        self._assistant_gemini_model.addItems(["gemini-2.5-flash", "gemini-2.5-flash-lite"])
+        fag.addRow("Gemini model:", self._assistant_gemini_model)
+        vbox.addWidget(self._assistant_gemini_widget)
+
+        self._assistant_claude_widget = QWidget()
+        fac = QFormLayout(self._assistant_claude_widget)
+        fac.setContentsMargins(0, 0, 0, 0)
+        self._assistant_claude_model = QComboBox()
+        self._assistant_claude_model.setEditable(False)
+        self._assistant_claude_model.addItems(["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"])
+        fac.addRow("Claude model:", self._assistant_claude_model)
+        vbox.addWidget(self._assistant_claude_widget)
+
+        self._assistant_groq_widget = QWidget()
+        fagr = QFormLayout(self._assistant_groq_widget)
+        fagr.setContentsMargins(0, 0, 0, 0)
+        self._assistant_groq_model = QComboBox()
+        self._assistant_groq_model.setEditable(False)
+        self._assistant_groq_model.addItems([
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+        ])
+        fagr.addRow("Groq model:", self._assistant_groq_model)
+        vbox.addWidget(self._assistant_groq_widget)
 
         prompt_lbl = QLabel("Assistant system prompt:")
         prompt_lbl.setObjectName("hint")
@@ -564,6 +610,68 @@ class SettingsTab(QWidget):
         self._ai_gemini_widget.setVisible(gemini)
         self._ai_claude_widget.setVisible(claude)
         self._ai_groq_widget.setVisible(groq)
+        self._assistant_gemini_widget.setVisible(gemini)
+        self._assistant_claude_widget.setVisible(claude)
+        self._assistant_groq_widget.setVisible(groq)
+
+    def apply_discovered_models(self, provider: str, payload):
+        if provider == "gemini":
+            for combo in (self._stt_model, self._gemini_ai_model, self._assistant_gemini_model):
+                self._repopulate_combo(combo, payload)
+        elif provider == "claude":
+            for combo in (self._claude_ai_model, self._assistant_claude_model):
+                self._repopulate_combo(combo, payload)
+        elif provider == "groq":
+            self._repopulate_combo(self._groq_stt_model, payload["stt"])
+            for combo in (self._groq_ai_model, self._assistant_groq_model):
+                self._repopulate_combo(combo, payload["chat"])
+
+    def _repopulate_combo(self, combo: QComboBox, fresh_items: list[str]):
+        if not fresh_items:
+            return
+        saved = combo.currentText()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(fresh_items)
+        idx = combo.findText(saved)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+            self._set_model_status(combo, ok_text="Model list updated from the provider's API.")
+        else:
+            combo.insertItem(0, saved)
+            combo.setCurrentIndex(0)
+            self._set_model_status(
+                combo, warn_text=f'"{saved}" is not on the provider\'s current model list.'
+            )
+        combo.blockSignals(False)
+
+    def _set_model_status(self, combo: QComboBox, ok_text: str | None = None, warn_text: str | None = None):
+        ok_label = getattr(combo, "_fresh_label", None)
+        if ok_label is None:
+            ok_label = QLabel()
+            ok_label.setObjectName("hint")
+            ok_label.setWordWrap(True)
+            ok_label.setVisible(False)
+            warn_label = QLabel()
+            warn_label.setObjectName("model_stale_warning")
+            warn_label.setWordWrap(True)
+            warn_label.setVisible(False)
+            parent_layout = combo.parentWidget().layout()
+            if isinstance(parent_layout, QFormLayout):
+                parent_layout.addRow("", ok_label)
+                parent_layout.addRow("", warn_label)
+            else:
+                parent_layout.addWidget(ok_label)
+                parent_layout.addWidget(warn_label)
+            combo._fresh_label = ok_label
+            combo._stale_warning_label = warn_label
+        else:
+            warn_label = combo._stale_warning_label
+
+        ok_label.setText(ok_text or "")
+        ok_label.setVisible(bool(ok_text))
+        warn_label.setText(warn_text or "")
+        warn_label.setVisible(bool(warn_text))
 
     def _on_intensity_changed(self, value: int):
         self._intensity_value_lbl.setText(self._INTENSITY_LABELS.get(value, str(value)))
@@ -678,6 +786,9 @@ class SettingsTab(QWidget):
         # Assistant
         self._assistant_prompt.setPlainText(cfg.assistant_prompt)
         self._assistant_clipboard_toggle.setChecked(cfg.assistant_use_clipboard)
+        self._assistant_gemini_model.setCurrentText(cfg.assistant_gemini_model)
+        self._assistant_claude_model.setCurrentText(cfg.assistant_claude_model)
+        self._assistant_groq_model.setCurrentText(cfg.assistant_groq_model)
 
         # STT
         idx = self._stt_provider_combo.findData(cfg.stt_provider)
@@ -746,6 +857,9 @@ class SettingsTab(QWidget):
         assistant_prompt = self._assistant_prompt.toPlainText().strip()
         s.set("assistant_prompt", assistant_prompt or AppConfig.assistant_prompt)
         s.set("assistant_use_clipboard", self._assistant_clipboard_toggle.isChecked())
+        s.set("assistant_gemini_model", self._assistant_gemini_model.currentText())
+        s.set("assistant_claude_model", self._assistant_claude_model.currentText())
+        s.set("assistant_groq_model", self._assistant_groq_model.currentText())
 
         # STT
         s.set("stt_provider",        self._stt_provider_combo.currentData())

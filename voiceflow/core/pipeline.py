@@ -166,17 +166,20 @@ class Pipeline(QObject):
         elif state in (State.IDLE, State.INJECTING):
             self._timeout_timer.stop()
 
-    def _make_gemini(self) -> GeminiClient:
+    def _make_gemini(self, for_assistant: bool = False) -> GeminiClient:
         cfg = self._settings.config
-        return GeminiClient(cfg.gemini_api_key, cfg.stt_model, cfg.gemini_ai_model)
+        ai_model = cfg.assistant_gemini_model if for_assistant else cfg.gemini_ai_model
+        return GeminiClient(cfg.gemini_api_key, cfg.stt_model, ai_model)
 
-    def _make_claude(self) -> ClaudeClient:
+    def _make_claude(self, for_assistant: bool = False) -> ClaudeClient:
         cfg = self._settings.config
-        return ClaudeClient(cfg.claude_api_key, cfg.claude_ai_model)
+        ai_model = cfg.assistant_claude_model if for_assistant else cfg.claude_ai_model
+        return ClaudeClient(cfg.claude_api_key, ai_model)
 
-    def _make_groq(self) -> GroqClient:
+    def _make_groq(self, for_assistant: bool = False) -> GroqClient:
         cfg = self._settings.config
-        return GroqClient(cfg.groq_api_key, cfg.groq_stt_model, cfg.groq_ai_model)
+        ai_model = cfg.assistant_groq_model if for_assistant else cfg.groq_ai_model
+        return GroqClient(cfg.groq_api_key, cfg.groq_stt_model, ai_model)
 
     def _make_stt_client(self):
         cfg = self._settings.config
@@ -384,11 +387,11 @@ class Pipeline(QObject):
             stt_cost = GeminiClient.estimate_cost(audio_s, len(command))
 
         if cfg.ai_model_provider == "claude" and cfg.claude_api_key:
-            client = self._make_claude()
+            client = self._make_claude(for_assistant=True)
         elif cfg.ai_model_provider == "groq" and cfg.groq_api_key:
-            client = self._make_groq()
+            client = self._make_groq(for_assistant=True)
         else:
-            client = self._make_gemini()
+            client = self._make_gemini(for_assistant=True)
 
         in_chars = len(command) + (len(context) if context else 0)
 

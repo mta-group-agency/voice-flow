@@ -324,6 +324,9 @@ class MainWindow(QMainWindow):
     def show_update_banner(self, info):
         self._update_banner.show_update(info)
 
+    def apply_discovered_models(self, provider: str, payload):
+        self._settings_tab.apply_discovered_models(provider, payload)
+
     def trigger_update(self):
         self.show()
         self.raise_()

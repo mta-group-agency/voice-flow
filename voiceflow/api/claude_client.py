@@ -63,3 +63,12 @@ class ClaudeClient(BaseAIClient):
     def estimate_cost(input_tokens: int, output_tokens: int) -> float:
         # claude-3-5-haiku approximate pricing
         return (input_tokens / 1000) * 0.00025 + (output_tokens / 1000) * 0.00125
+
+    def list_models(self) -> list[str]:
+        if not self.api_key:
+            return []
+        try:
+            page = anthropic.Anthropic(api_key=self.api_key, timeout=8.0).models.list(limit=100)
+            return sorted(m.id for m in page.data)
+        except Exception:
+            return []

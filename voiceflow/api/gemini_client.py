@@ -154,6 +154,22 @@ class GeminiClient(BaseAIClient):
         except Exception:
             return False
 
+    def list_models(self) -> list[str]:
+        if not self.api_key:
+            return []
+        try:
+            resp = _session.get(f"{_BASE}?key={self.api_key}", timeout=8)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError):
+            return []
+        return sorted({
+            m.get("name", "").removeprefix("models/")
+            for m in data.get("models", [])
+            if m.get("name", "").startswith("models/gemini-")
+            and "generateContent" in m.get("supportedGenerationMethods", [])
+        })
+
     @staticmethod
     def estimate_cost(audio_seconds: float, output_chars: int) -> float:
         audio_cost = audio_seconds * 25 * (1.00 / 1_000_000)

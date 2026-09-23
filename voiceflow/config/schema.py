@@ -42,6 +42,9 @@ class AppConfig:
 
     # AI assistant mode (second hotkey track)
     assistant_use_clipboard: bool = True
+    assistant_gemini_model: str = "gemini-2.5-flash"
+    assistant_claude_model: str = "claude-sonnet-4-6"
+    assistant_groq_model: str = "llama-3.3-70b-versatile"
     assistant_prompt: str = (
         "Jesteś asystentem piszącym po polsku. Wykonaj polecenie użytkownika i zwróć "
         "WYŁĄCZNIE gotowy tekst do wklejenia — bez wstępów, komentarzy, wyjaśnień ani "

@@ -30,6 +30,10 @@ class BaseAIClient(ABC):
     def test_connection(self) -> bool:
         """Return True if the API key is valid and reachable."""
 
+    def list_models(self) -> list[str]:
+        """Best-effort live model list from the provider. Never raises — returns [] on any failure."""
+        return []
+
     _INTENSITY_PREAMBLE = {
         1: (
             "Make MINIMAL changes. Only fix clear typos and remove the most obvious filler sounds. "
