@@ -26,7 +26,7 @@ def _ensure_single_instance():
 
 def _app_icon() -> QIcon:
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-    return QIcon(os.path.join(base, "assets", "icon.ico"))
+    return QIcon(os.path.join(base, "assets", "windows", "icon.ico"))
 
 
 def main():

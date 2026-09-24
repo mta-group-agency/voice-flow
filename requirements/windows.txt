@@ -1,0 +1,3 @@
+-r base.txt
+PyAudio>=0.2.14
+pyinstaller>=6.0

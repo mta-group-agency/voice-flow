@@ -1,13 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+
 block_cipher = None
 
+ROOT = os.path.abspath(os.path.join(SPECPATH, '..', '..'))
+
 a = Analysis(
-    ['main.py'],
-    pathex=['.'],
+    [os.path.join(ROOT, 'main.py')],
+    pathex=[ROOT],
     binaries=[],
     datas=[
-        ('assets', 'assets'),
+        (os.path.join(ROOT, 'assets', 'common'), os.path.join('assets', 'common')),
+        (os.path.join(ROOT, 'assets', 'windows'), os.path.join('assets', 'windows')),
     ],
     hiddenimports=[
         'pynput.keyboard._win32',
@@ -51,6 +56,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/icon.ico',
+    icon=os.path.join(ROOT, 'assets', 'windows', 'icon.ico'),
     version_file=None,
 )

@@ -29,6 +29,6 @@
 > Krótki ślad po zamkniętych pozycjach (autopilot przenosi tu podsumowania paczek).
 
 - [x] **Skill `/release`** — automatyzacja pakowania i publikacji release'u:
-  `pyinstaller voiceflow.spec` → spakowanie `dist/VoiceFlow.exe` → utworzenie
-  release'u w organizacyjnym repo GitHub (tag, changelog, upload artefaktu).
-  (patrz `.claude/commands/release.md`)
+  `pyinstaller packaging/windows/voiceflow.spec --distpath dist/windows --workpath build/windows` →
+  spakowanie `dist/windows/VoiceFlow.exe` → utworzenie release'u w organizacyjnym repo GitHub
+  (tag, changelog, upload artefaktu). (patrz `.claude/commands/release.md`)

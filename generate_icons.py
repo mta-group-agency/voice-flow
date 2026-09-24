@@ -45,9 +45,9 @@ def make_icon(filename: str, bg: str, dot_color: str, letter: str):
     print(f"Saved: {filename}")
 
 
-make_icon("assets/icon.png",     bg="#FFFFFF", dot_color="#000000", letter="V")
-make_icon("assets/icon_rec.png", bg="#FF3333", dot_color="#FFFFFF", letter="R")
-make_icon("assets/icon_proc.png",bg="#FFDD00", dot_color="#000000", letter="P")
+make_icon("assets/common/icon.png",      bg="#FFFFFF", dot_color="#000000", letter="V")
+make_icon("assets/common/icon_rec.png",  bg="#FF3333", dot_color="#FFFFFF", letter="R")
+make_icon("assets/common/icon_proc.png", bg="#FFDD00", dot_color="#000000", letter="P")
 
 print("Icons generated.")
 sys.exit(0)

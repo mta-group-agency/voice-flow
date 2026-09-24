@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
 from voiceflow.core.pipeline import State
 
-_ASSETS = Path(__file__).parent.parent.parent / "assets"
+_ASSETS = Path(__file__).parent.parent.parent / "assets" / "common"
 
 
 def _icon(name: str) -> QIcon:
