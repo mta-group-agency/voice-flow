@@ -1,6 +1,31 @@
 from abc import ABC, abstractmethod
 
 from voiceflow.config.schema import ProcessingConfig
+from voiceflow.core.logger import redact
+
+
+def extract_error_detail(response, limit: int = 1200) -> str:
+    """Human-readable reason from a JSON API error body (Gemini/Groq both use
+    an {"error": {"message": ...}} shape), if any, e.g. "API key not valid.", so a
+    bad key can be told apart from other 400s. Collapsed to one line, redacted and
+    truncated; never raises. The limit is generous because 429 bodies put the useful
+    part (which quota, "retry in 41.7s") several hundred characters in."""
+    if response is None:
+        return ""
+    try:
+        body = response.json()
+        error = body.get("error") if isinstance(body, dict) else None
+        if isinstance(error, str):
+            message = error
+        elif isinstance(error, dict) and isinstance(error.get("message"), str):
+            message = error.get("message")
+        else:
+            message = ""
+    except Exception:
+        # A malformed/unreadable body must never replace the HTTP status error.
+        return ""
+    message = " ".join(str(message).split())
+    return redact(message)[:limit] if message else ""
 
 
 class BaseAIClient(ABC):

@@ -19,11 +19,14 @@ from voiceflow.api.local_whisper_client import LocalWhisperClient
 from voiceflow.config.schema import ProcessingConfig
 from voiceflow.core.audio_recorder import AudioRecorder
 from voiceflow.core.hotkey_manager import HotkeyManager
+from voiceflow.core import logger
 from voiceflow.core.text_injector import TextInjector
 from voiceflow.storage.history_db import HistoryDB, TranscriptionEntry
 
 if TYPE_CHECKING:
     from voiceflow.config.settings_manager import SettingsManager
+
+_log = logger.get("pipeline")
 
 _TRANSLATE_RE = re.compile(r"^translate\s+to\s+(\w+)[\s:,]+(.+)$", re.IGNORECASE | re.DOTALL)
 _MIN_AUDIO_DURATION = 0.3  # seconds
@@ -63,7 +66,7 @@ class _Worker(QRunnable):
                 self._on_result(result)
         except Exception as e:
             if self._on_error:
-                self._on_error(str(e))
+                self._on_error(e)
 
 
 class Pipeline(QObject):
@@ -84,6 +87,15 @@ class Pipeline(QObject):
         self._cancel_flag: bool = False
         self._mode: str = _MODE_DICTATION
         self._assistant_context: str | None = None
+        # Context for the in-flight worker (step/provider/model/…), read by _on_error
+        # and the cancel/timeout path — never shown to the user, log-only.
+        self._run_ctx: dict = {}
+        # What actually ran this cycle, for the one-line success summary — reset per
+        # recording so a skipped step doesn't carry over stale data from the last one.
+        self._stt_provider: str | None = None
+        self._stt_model: str | None = None
+        self._ai_provider: str | None = None
+        self._ai_model: str | None = None
 
         self._timeout_timer = QTimer(self)
         self._timeout_timer.setSingleShot(True)
@@ -121,11 +133,15 @@ class Pipeline(QObject):
         self._cancel_flag = True
         self._timeout_timer.stop()
         self._set_state(State.IDLE)
-        msg = (
-            "Processing timed out after 30s — cancelled automatically."
-            if timed_out else
-            "Cancelled."
+        step, provider, model = (
+            self._run_ctx.get("step", "?"), self._run_ctx.get("provider"), self._run_ctx.get("model"),
         )
+        if timed_out:
+            _log.warning("Timed out after 30s (step=%s, provider=%s, model=%s)", step, provider, model)
+            msg = "Processing timed out after 30s — cancelled automatically."
+        else:
+            _log.info("Cancelled by user (step=%s, provider=%s, model=%s)", step, provider, model)
+            msg = "Cancelled."
         self.error_occurred.emit(msg)
 
     def reconfigure(self):
@@ -220,6 +236,10 @@ class Pipeline(QObject):
             return self._make_gemini()
         return None
 
+    def _emit_error(self, user_message: str, log_message: str, *log_args) -> None:
+        _log.warning(log_message, *log_args)
+        self.error_occurred.emit(user_message)
+
     def _build_processing_config(self, raw_text: str) -> tuple[str, ProcessingConfig]:
         cfg = self._settings.config
 
@@ -260,6 +280,7 @@ class Pipeline(QObject):
             return
         self._mode = _MODE_DICTATION
         self._assistant_context = None
+        self._reset_run_tracking()
         self._set_state(State.RECORDING)
         self._recording_start = time.time()
         self._recorder.start_recording()
@@ -270,9 +291,15 @@ class Pipeline(QObject):
             return
         self._mode = _MODE_ASSISTANT
         self._assistant_context = self._read_clipboard_context()
+        self._reset_run_tracking()
         self._set_state(State.RECORDING)
         self._recording_start = time.time()
         self._recorder.start_recording()
+
+    def _reset_run_tracking(self) -> None:
+        self._run_ctx = {}
+        self._stt_provider = self._stt_model = None
+        self._ai_provider = self._ai_model = None
 
     def _read_clipboard_context(self) -> str | None:
         # Must run on the main Qt thread (called from the hotkey-press slot).
@@ -301,7 +328,10 @@ class Pipeline(QObject):
         duration = time.time() - self._recording_start
         if duration < _MIN_AUDIO_DURATION or not wav_bytes:
             self._set_state(State.IDLE)
-            self.error_occurred.emit("Recording too short — hold the key and speak.")
+            self._emit_error(
+                "Recording too short — hold the key and speak.",
+                "Recording too short (duration=%.2fs, has_audio=%s)", duration, bool(wav_bytes),
+            )
             return
 
         self._last_wav = wav_bytes
@@ -329,6 +359,11 @@ class Pipeline(QObject):
 
         if use_combined:
             gemini = self._make_gemini()
+            self._stt_provider = self._ai_provider = "gemini"
+            self._stt_model = gemini.stt_model
+            self._ai_model = gemini.ai_model
+            self._run_ctx = {"step": "combined", "provider": "gemini", "model": gemini.stt_model, "audio_s": audio_s}
+
             def _combined():
                 final = gemini.transcribe_and_process(wav_bytes, proc_config)
                 cost = GeminiClient.estimate_cost(audio_s, len(final))
@@ -343,10 +378,14 @@ class Pipeline(QObject):
             stt = self._make_stt_client()
             if stt is None:
                 self._set_state(State.IDLE)
-                self.error_occurred.emit(
-                    "No API key configured for speech-to-text. Add one in Settings → API Keys."
+                self._emit_error(
+                    "No API key configured for speech-to-text. Add one in Settings → API Keys.",
+                    "No STT API key configured (configured_provider=%s)", self._settings.config.stt_provider,
                 )
                 return
+            self._stt_provider = stt_provider
+            self._stt_model = getattr(stt, "stt_model", None)
+            self._run_ctx = {"step": "transcribe", "provider": stt_provider, "model": self._stt_model, "audio_s": audio_s}
             worker = _Worker(
                 stt.transcribe,
                 wav_bytes,
@@ -360,7 +399,11 @@ class Pipeline(QObject):
             return
         if not raw_text.strip():
             self._set_state(State.IDLE)
-            self.error_occurred.emit("Could not transcribe audio. Try speaking more clearly.")
+            self._emit_error(
+                "Could not transcribe audio. Try speaking more clearly.",
+                "Empty transcript (provider=%s, model=%s, audio_s=%.2f)",
+                self._stt_provider, self._stt_model, getattr(self, "_last_duration", 0.0),
+            )
             return
 
         if self._mode == _MODE_ASSISTANT:
@@ -390,9 +433,10 @@ class Pipeline(QObject):
         if provider is None:
             # Never drop what the user already said — paste it raw and say why it
             # skipped the cleanup (local Whisper needs no key, post-processing does).
-            self.error_occurred.emit(
+            self._emit_error(
                 "Pasted without AI cleanup — no API key for text processing. "
-                "Add one in Settings → API Keys."
+                "Add one in Settings → API Keys.",
+                "No AI provider key for post-processing (configured=%s)", cfg.ai_model_provider,
             )
             self._on_ai_done(raw_text=raw_text, final_text=text, cost=stt_cost)
             return
@@ -402,6 +446,13 @@ class Pipeline(QObject):
             client = self._make_groq()
         else:
             client = self._make_gemini()
+
+        self._ai_provider = provider
+        self._ai_model = getattr(client, "ai_model", None) or getattr(client, "model", None)
+        self._run_ctx = {
+            "step": "ai_cleanup", "provider": provider, "model": self._ai_model,
+            "audio_s": audio_s, "chars": len(text),
+        }
 
         def _process():
             result = client.process_text(text, proc_config)
@@ -445,9 +496,10 @@ class Pipeline(QObject):
             provider = cfg.assistant_model_provider
             if not provider_keys.get(provider):
                 self._set_state(State.IDLE)
-                self.error_occurred.emit(
+                self._emit_error(
                     f"No API key for {provider.capitalize()}. Add it in Settings → API Keys, "
-                    "or pick a provider you have a key for in Settings → AI Assistant."
+                    "or pick a provider you have a key for in Settings → AI Assistant.",
+                    "No API key for configured assistant provider %s", provider,
                 )
                 return
         elif provider_keys.get(cfg.ai_model_provider):
@@ -456,7 +508,10 @@ class Pipeline(QObject):
             provider = next((p for p in _PROVIDER_FALLBACK_ORDER if provider_keys.get(p)), None)
             if provider is None:
                 self._set_state(State.IDLE)
-                self.error_occurred.emit("No API key configured. Add one in Settings → API Keys.")
+                self._emit_error(
+                    "No API key configured. Add one in Settings → API Keys.",
+                    "No API key configured for assistant (fallback exhausted)",
+                )
                 return
 
         if provider == "claude":
@@ -467,6 +522,12 @@ class Pipeline(QObject):
             client = self._make_gemini(for_assistant=True)
 
         in_chars = len(command) + (len(context) if context else 0)
+        self._ai_provider = provider
+        self._ai_model = getattr(client, "ai_model", None) or getattr(client, "model", None)
+        self._run_ctx = {
+            "step": "assistant", "provider": provider, "model": self._ai_model,
+            "audio_s": audio_s, "chars": in_chars,
+        }
 
         def _assist():
             result = client.run_assistant(command, context, system_prompt)
@@ -508,6 +569,12 @@ class Pipeline(QObject):
         else:
             ai_provider = cfg.ai_model_provider
 
+        _log.info(
+            "Dictation done (mode=%s, stt=%s/%s, ai=%s/%s, audio_s=%.2f, in_chars=%d, out_chars=%d, cost_usd=%.5f)",
+            self._mode, self._stt_provider, self._stt_model, self._ai_provider, self._ai_model,
+            getattr(self, "_last_duration", 0.0), len(raw_text), len(final_text), cost,
+        )
+
         # DB insert in background so it doesn't block the main thread
         entry = TranscriptionEntry(
             raw_text=raw_text,
@@ -525,6 +592,23 @@ class Pipeline(QObject):
 
         self._pool.start(_Worker(_save))
 
-    def _on_error(self, message: str):
+    def _on_error(self, exc: Exception):
+        ctx = self._run_ctx
+        message = logger.redact(str(exc))
+        # RuntimeError is how the API clients signal an already-readable error (bad
+        # key, HTTP status, timeout); anything else is a bug worth a traceback.
+        expected = isinstance(exc, RuntimeError)
+        if self._cancel_flag:
+            _log.info(
+                "late error after cancel/timeout ignored (step=%s): %s: %s",
+                ctx.get("step", "?"), type(exc).__name__, message,
+            )
+            return
         self._set_state(State.IDLE)
+        _log.warning(
+            "%s failed (provider=%s, model=%s, audio_s=%.2f, chars=%s): %s: %s",
+            ctx.get("step", "?"), ctx.get("provider"), ctx.get("model"),
+            ctx.get("audio_s") or 0.0, ctx.get("chars", "-"), type(exc).__name__, message,
+            exc_info=None if expected else exc,
+        )
         self.error_occurred.emit(f"Error: {message}")

@@ -37,6 +37,10 @@ class LocalWhisperClient(BaseAIClient):
     def __init__(self, model_name: str = "small"):
         self._model_name = model_name
 
+    @property
+    def stt_model(self) -> str:
+        return self._model_name
+
     @classmethod
     def preload_model(
         cls,

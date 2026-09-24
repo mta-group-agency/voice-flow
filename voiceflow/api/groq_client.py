@@ -3,8 +3,9 @@ import time
 
 import requests
 
-from voiceflow.api.base_client import BaseAIClient
+from voiceflow.api.base_client import BaseAIClient, extract_error_detail
 from voiceflow.config.schema import ProcessingConfig
+from voiceflow.core import logger
 
 _STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 _CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -14,6 +15,13 @@ _RETRYABLE = {429, 500, 502, 503, 504}
 # Reasoning models (deepseek-r1, distill, qwq...) prefix their answer with a
 # <think>...</think> block our client doesn't parse — strip it before it reaches the clipboard.
 _THINK_RE = re.compile(r"^\s*<think>.*?</think>\s*", re.DOTALL)
+_log = logger.get("groq_client")
+
+
+def _http_error_message(prefix: str, status: int, reason: str, response) -> str:
+    msg = f"{prefix} {status} ({reason})"
+    detail = extract_error_detail(response)
+    return f"{msg}: {detail}" if detail else msg
 
 
 class GroqClient(BaseAIClient):
@@ -49,7 +57,7 @@ class GroqClient(BaseAIClient):
                     time.sleep(2 ** attempt)
                     continue
                 reason = e.response.reason if e.response is not None else "unknown"
-                raise RuntimeError(f"Groq API error {status} ({reason})") from None
+                raise RuntimeError(_http_error_message("Groq API error", status, reason, e.response)) from None
             except requests.RequestException as e:
                 if attempt < 2:
                     time.sleep(2 ** attempt)
@@ -77,7 +85,7 @@ class GroqClient(BaseAIClient):
                     time.sleep(2 ** attempt)
                     continue
                 reason = e.response.reason if e.response is not None else "unknown"
-                raise RuntimeError(f"Groq STT error {status} ({reason})") from None
+                raise RuntimeError(_http_error_message("Groq STT error", status, reason, e.response)) from None
             except requests.RequestException as e:
                 if attempt < 2:
                     time.sleep(2 ** attempt)
@@ -122,7 +130,8 @@ class GroqClient(BaseAIClient):
                 "max_tokens": 5,
             })
             return True
-        except Exception:
+        except Exception as e:
+            _log.warning("Groq test connection failed (model=%s): %s", self.ai_model, e)
             return False
 
     @staticmethod

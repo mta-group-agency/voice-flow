@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 from voiceflow.core.pipeline import State
 
 _ASSETS = Path(__file__).parent.parent.parent / "assets" / "common"
+_MAX_NOTIFY_CHARS = 250
 
 
 def _icon(name: str) -> QIcon:
@@ -96,4 +97,8 @@ class TrayManager:
         )
 
     def notify_error(self, message: str):
+        # Windows cuts balloon text at 255 characters, mid-word and without a marker;
+        # the full reason stays in the log.
+        if len(message) > _MAX_NOTIFY_CHARS:
+            message = message[:_MAX_NOTIFY_CHARS - 1].rstrip() + "…"
         self._tray.showMessage("VoiceFlow", message, QSystemTrayIcon.MessageIcon.Warning, 4000)

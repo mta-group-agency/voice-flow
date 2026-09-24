@@ -49,8 +49,9 @@ Dalej: [Co gdzie leży](#co-gdzie-leży), [macOS](#macos).
 - nic się nie wkleja albo dymek "Could not transcribe audio": sprawdź mikrofon; w Ustawieniach Windows >
   Prywatność i zabezpieczenia > Mikrofon musi być włączony dostęp dla aplikacji klasycznych,
 - tekst nie wkleja się w programie uruchomionym jako administrator: Windows na to nie pozwala, uruchom ten program normalnie,
-- coś innego: otwórz `%APPDATA%\VoiceFlow\voiceflow.log`, najnowsze wpisy są na końcu (Ctrl+End). Zanim
-  wyślesz fragment autorowi, usuń z niego klucze API: log potrafi zawierać klucz Gemini (ciąg od `AIza`).
+- coś innego: otwórz `%APPDATA%\VoiceFlow\voiceflow.log`, najnowsze wpisy są na końcu (Ctrl+End). Log nie
+  zawiera kluczy API, dyktowanego tekstu ani zawartości schowka (wpisy ze starszych wersji aplikacja czyści
+  sama przy starcie), więc możesz wysłać autorowi cały plik.
 
 ## Instalacja
 

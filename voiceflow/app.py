@@ -75,11 +75,11 @@ def _heal_notification_body(
 
 
 class VoiceFlowApp:
-    def __init__(self, qt_app: QApplication):
+    def __init__(self, qt_app: QApplication, settings: SettingsManager | None = None):
         self._qt_app = qt_app
         qt_app.setQuitOnLastWindowClosed(False)
 
-        self._settings = SettingsManager()
+        self._settings = settings or SettingsManager()
         cfg = self._settings.config
 
         qt_app.setStyleSheet(vf_theme.build_stylesheet(cfg.theme))

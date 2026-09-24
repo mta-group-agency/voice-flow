@@ -25,6 +25,13 @@
   w < 5 min. Rozważyć: skąd wziąć klucz Groq (link + screeny), gdzie go wkleić w UI,
   domyślne ustawienia dla trybu „zero kosztów".
 
+### Logging, diagnostyka, obsługa błędów
+- [ ] **Anulowane dyktowanie wklejane do nowego.** Anuluj dyktowanie w trakcie transkrypcji i natychmiast nagraj nowe — spóźniony wynik starego przebiegu przechodzi przez AI i jest wklejany. Przyczyna: flaga _cancel_flag jest wspólna dla wszystkich przebiegów. Rozwiązanie: numer przebiegu sprawdzany w callbackach. Priorytet wysoki.
+- [ ] **Błąd AI: surowa transkrypcja przepada.** Błędy post-processingu (429, timeout, brak sieci) powodują, że nic się nie wkleja i dyktowanie znika, choć surowa transkrypcja jest gotowa. Rozwiązanie: wklejać surowy tekst z komunikatem o błędzie, jak przy braku klucza do AI.
+- [ ] **Awaria mikrofonu raportowana jako timeout.** Gdy mikrofon ulegnie awarii, po 30 s pojawia się komunikat "Processing timed out" zamiast błędu mikrofonu. Potrzebne: sprawdzenie logu (step=?) i poprawianie diagnozy na wcześniejszym etapie.
+- [ ] **Log diagnostyczny: czasy, stany, błędy Turso.** (1) Dodać czasy stt_ms/ai_ms/total_ms do linii "Dictation done"; (2) zmienić "ai=None/None" na "ai=off"; (3) logować błędy Turso zamiast je połykać (silent catch).
+- [ ] **README: ostrzeżenie o bezpieczeństwie logu.** Przy wysyłaniu logu dopisać instrukcję: "wyślij tylko voiceflow.log, nie config.json (tam są klucze API)".
+
 ## Zrobione
 > Krótki ślad po zamkniętych pozycjach (autopilot przenosi tu podsumowania paczek).
 

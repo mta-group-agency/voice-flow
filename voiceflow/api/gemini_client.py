@@ -4,13 +4,23 @@ import time
 
 import requests
 
-from voiceflow.api.base_client import BaseAIClient
+from voiceflow.api.base_client import BaseAIClient, extract_error_detail
 from voiceflow.config.schema import ProcessingConfig
+from voiceflow.core import logger
 
 _BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 _TIMEOUT = 30
 _RETRYABLE = {429, 500, 502, 503, 504}
 _session = requests.Session()  # Persistent TCP connections across all Gemini calls
+_log = logger.get("gemini_client")
+
+
+def _http_error(e: requests.HTTPError) -> RuntimeError:
+    status = e.response.status_code if e.response is not None else 0
+    reason = e.response.reason if e.response is not None else "unknown"
+    detail = extract_error_detail(e.response)
+    msg = f"Gemini API error {status} ({reason})"
+    return RuntimeError(f"{msg}: {detail}" if detail else msg)
 
 
 class GeminiClient(BaseAIClient):
@@ -20,13 +30,16 @@ class GeminiClient(BaseAIClient):
         self.ai_model = ai_model
 
     def _url(self, model: str, stream: bool = False) -> str:
-        endpoint = "streamGenerateContent?alt=sse&" if stream else "generateContent?"
-        return f"{_BASE}/{model}:{endpoint}key={self.api_key}"
+        endpoint = "streamGenerateContent?alt=sse" if stream else "generateContent"
+        return f"{_BASE}/{model}:{endpoint}"
+
+    def _headers(self) -> dict:
+        return {"x-goog-api-key": self.api_key}
 
     def _post(self, model: str, payload: dict) -> dict:
         for attempt in range(3):
             try:
-                resp = _session.post(self._url(model), json=payload, timeout=_TIMEOUT)
+                resp = _session.post(self._url(model), json=payload, headers=self._headers(), timeout=_TIMEOUT)
                 resp.raise_for_status()
                 return resp.json()
             except requests.HTTPError as e:
@@ -34,8 +47,7 @@ class GeminiClient(BaseAIClient):
                 if status in _RETRYABLE and attempt < 2:
                     time.sleep(0.3 * (2 ** attempt))  # 0.3s, 0.6s
                     continue
-                reason = e.response.reason if e.response is not None else "unknown"
-                raise RuntimeError(f"Gemini API error {status} ({reason})") from None
+                raise _http_error(e) from None
             except requests.RequestException as e:
                 if attempt < 2:
                     time.sleep(0.3 * (2 ** attempt))
@@ -49,7 +61,7 @@ class GeminiClient(BaseAIClient):
             try:
                 resp = _session.post(
                     self._url(model, stream=True), json=payload,
-                    timeout=_TIMEOUT, stream=True,
+                    headers=self._headers(), timeout=_TIMEOUT, stream=True,
                 )
                 resp.raise_for_status()
                 parts = []
@@ -71,8 +83,7 @@ class GeminiClient(BaseAIClient):
                 if status in _RETRYABLE and attempt < 2:
                     time.sleep(0.3 * (2 ** attempt))
                     continue
-                reason = e.response.reason if e.response is not None else "unknown"
-                raise RuntimeError(f"Gemini API error {status} ({reason})") from None
+                raise _http_error(e) from None
             except requests.RequestException as e:
                 if attempt < 2:
                     time.sleep(0.3 * (2 ** attempt))
@@ -151,14 +162,15 @@ class GeminiClient(BaseAIClient):
             payload = {"contents": [{"parts": [{"text": "Say: ok"}]}]}
             self._post(self.ai_model, payload)
             return True
-        except Exception:
+        except Exception as e:
+            _log.warning("Gemini test connection failed (model=%s): %s", self.ai_model, e)
             return False
 
     def list_models(self) -> list[str]:
         if not self.api_key:
             return []
         try:
-            resp = _session.get(f"{_BASE}?key={self.api_key}", timeout=8)
+            resp = _session.get(_BASE, headers=self._headers(), timeout=8)
             resp.raise_for_status()
             data = resp.json()
         except (requests.RequestException, ValueError):

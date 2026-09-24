@@ -2,6 +2,9 @@ import anthropic
 
 from voiceflow.api.base_client import BaseAIClient
 from voiceflow.config.schema import ProcessingConfig
+from voiceflow.core import logger
+
+_log = logger.get("claude_client")
 
 
 class ClaudeClient(BaseAIClient):
@@ -56,7 +59,8 @@ class ClaudeClient(BaseAIClient):
                 messages=[{"role": "user", "content": "Say: ok"}],
             )
             return True
-        except Exception:
+        except Exception as e:
+            _log.warning("Claude test connection failed (model=%s): %s", self.model, e)
             return False
 
     @staticmethod
