@@ -1,10 +1,9 @@
 # assets/macos
 
-Ikony specyficzne dla macOS. Na razie tylko plan: powstaną w fazie F4 (`TODO/plan-mac.md`,
-sekcja "F4. Build na Maca w chmurze"), generowane przez `generate_icons.py`.
-
-Docelowo w tym katalogu:
+Ikony specyficzne dla macOS.
 
 - `icon.icns`: ikona aplikacji `VoiceFlow.app` (wskazuje ją `packaging/macos/voiceflow.spec`).
-- monochromatyczne ikony template dla paska menu (menu bar), zgodne z konwencją
-  macOS (jasny/ciemny motyw dopasowywany automatycznie przez system).
+  Generowana w momencie builda przez `packaging/macos/build.sh` (sips + iconutil z `assets/common/icon.png`),
+  ignorowana przez git.
+- monochromatyczne ikony template dla paska menu (menu bar): na razie z `assets/common`, docelowo
+  tu. Zgodne z konwencją macOS (jasny/ciemny motyw dopasowywany automatycznie przez system).

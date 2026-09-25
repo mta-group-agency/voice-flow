@@ -1,19 +1,19 @@
 """
 Local speech-to-text using faster-whisper (CTranslate2 backend).
 NVIDIA GPU recommended (~150-800ms); falls back to CPU (~2-5s).
-Models are downloaded from HuggingFace Hub and cached in %APPDATA%/VoiceFlow/models/.
+Models are downloaded from HuggingFace Hub and cached in the models/ subfolder of the VoiceFlow data folder.
 """
 
 import os
 import shutil
 import tempfile
-from pathlib import Path
 from typing import Callable, Optional
 
 from voiceflow.api.base_client import BaseAIClient
 from voiceflow.config.schema import ProcessingConfig
+from voiceflow.platform import data_dir
 
-MODELS_DIR = Path(os.environ.get("APPDATA", Path.home())) / "VoiceFlow" / "models"
+MODELS_DIR = data_dir() / "models"
 
 MODEL_INFO = {
     "tiny":     {"size_mb": 39,   "disk_mb": 80,   "speed": "~0.1s (GPU)"},

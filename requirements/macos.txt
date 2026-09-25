@@ -2,3 +2,6 @@
 # Wymaga portaudio z brew: brew install portaudio
 PyAudio>=0.2.14
 pyinstaller>=6.0
+# pynput's darwin backend needs these (PyPI marks them sys_platform=="darwin" only)
+pyobjc-framework-Quartz>=8.0
+pyobjc-framework-ApplicationServices>=8.0

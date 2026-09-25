@@ -64,6 +64,9 @@ class TrayManager:
         self._main_window.activateWindow()
 
     def _on_activated(self, reason):
+        # macOS pops the context menu on any click when one is set (including Trigger), so
+        # DoubleClick below never fires there; "Open VoiceFlow" (the first clickable item,
+        # right after the disabled "VoiceFlow" header) is the Mac equivalent of this.
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self._show_window()
 

@@ -1,12 +1,16 @@
 """
-Injects text into the currently active window via clipboard + Ctrl+V.
+Injects text into the currently active window via clipboard + Ctrl+V (Cmd+V on macOS).
 Saves and restores the previous clipboard content.
 """
+
+import time
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QClipboard
 from PyQt6.QtWidgets import QApplication
-from pynput.keyboard import Controller, Key
+from pynput.keyboard import Controller
+
+from voiceflow.platform import PASTE_DELAY_S, paste_modifier
 
 
 class TextInjector:
@@ -14,6 +18,7 @@ class TextInjector:
 
     def __init__(self, hotkey_manager=None, hotkey_managers=None):
         self._keyboard = Controller()
+        self._paste_modifier = paste_modifier()
         managers = list(hotkey_managers) if hotkey_managers else []
         if hotkey_manager is not None:
             managers.append(hotkey_manager)
@@ -29,13 +34,15 @@ class TextInjector:
         for m in self._hotkey_managers:
             m.set_suppressed(True)
 
-        # setText is synchronous on Windows — no sleep needed
+        # setText is synchronous on Windows (PASTE_DELAY_S is 0 there); macOS needs a moment
         clipboard.setText(text)
+        if PASTE_DELAY_S:
+            time.sleep(PASTE_DELAY_S)
 
-        self._keyboard.press(Key.ctrl)
+        self._keyboard.press(self._paste_modifier)
         self._keyboard.press("v")
         self._keyboard.release("v")
-        self._keyboard.release(Key.ctrl)
+        self._keyboard.release(self._paste_modifier)
 
         def restore():
             clipboard.setText(previous)

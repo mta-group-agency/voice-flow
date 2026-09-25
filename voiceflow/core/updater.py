@@ -20,10 +20,12 @@ import requests
 
 from voiceflow.__version__ import __version__
 from voiceflow.core import logger
+from voiceflow.platform import IS_MAC
 
 _LATEST_URL = "https://api.github.com/repos/mta-group-agency/voice-flow/releases/latest"
 _TAG_URL = "https://api.github.com/repos/mta-group-agency/voice-flow/releases/tags/v{version}"
-_ASSET_NAME = "VoiceFlow.exe"
+# Windows keeps the bare "VoiceFlow.exe" name: installs already out there look for exactly it.
+_ASSET_NAME = "VoiceFlow-macos-arm64.zip" if IS_MAC else "VoiceFlow.exe"
 _HEADERS = {"Accept": "application/vnd.github+json"}
 _CHECK_TIMEOUT = 10
 _DOWNLOAD_TIMEOUT = 300
@@ -197,7 +199,8 @@ del "%~f0"
 
 
 def can_self_update() -> bool:
-    if not getattr(sys, "frozen", False):
+    # Swapping a whole .app bundle is not implemented; the banner sends Mac users to the download.
+    if IS_MAC or not getattr(sys, "frozen", False):
         return False
     return os.access(Path(sys.executable).parent, os.W_OK)
 

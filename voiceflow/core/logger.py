@@ -5,6 +5,8 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from voiceflow.platform import data_dir
+
 _MAX_BYTES = 1_000_000
 _BACKUP_COUNT = 3
 _FALLBACK_LOG_NAME = re.compile(r"voiceflow-\d+\.log(?:\.\d+)?")
@@ -88,7 +90,7 @@ def _make_handler(log_file: Path) -> tuple[logging.Handler, Path | None]:
 
 
 def setup() -> Path | None:
-    log_dir = Path(os.environ.get("APPDATA", Path.home())) / "VoiceFlow"
+    log_dir = data_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "voiceflow.log"
 

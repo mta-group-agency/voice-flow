@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 from voiceflow.__version__ import __version__
 from voiceflow.core import updater
 from voiceflow.core.updater import UpdateInfo
+from voiceflow.platform import IS_MAC
 
 
 class UpdateCheckWorker(QThread):
@@ -140,7 +141,13 @@ class UpdateBanner(QFrame):
     def _on_failed(self):
         self._progress.hide()
         self._text.setText("Downloading update in your browser…")
-        self._sub.setText("When it's done, close VoiceFlow and run the downloaded file.")
+        if IS_MAC:
+            self._sub.setText(
+                "When it's done, quit VoiceFlow, unzip the file and move VoiceFlow to Applications, "
+                "replacing the old one."
+            )
+        else:
+            self._sub.setText("When it's done, close VoiceFlow and run the downloaded file.")
         self._update_btn.hide()
         self._later_btn.setText("Close")
         self._later_btn.show()

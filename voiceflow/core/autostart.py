@@ -1,13 +1,11 @@
 """
-Windows registry autostart via HKCU/Software/Microsoft/Windows/CurrentVersion/Run.
-Works only when running as a compiled .exe (sys.frozen).
+Start at login: HKCU Run key on Windows, a LaunchAgent on macOS (see voiceflow.platform).
+Works only when running as the compiled app (sys.frozen).
 """
 
 import sys
-import winreg
 
-_REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-_APP_NAME = "VoiceFlow"
+from voiceflow.platform import autostart_disable, autostart_enable, autostart_is_enabled
 
 
 def _exe_path() -> str | None:
@@ -17,40 +15,18 @@ def _exe_path() -> str | None:
 
 
 def is_enabled() -> bool:
-    try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_KEY, 0, winreg.KEY_READ)
-        winreg.QueryValueEx(key, _APP_NAME)
-        winreg.CloseKey(key)
-        return True
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return False
+    return autostart_is_enabled()
 
 
 def enable() -> bool:
     exe = _exe_path()
     if not exe:
         return False
-    try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_KEY, 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, _APP_NAME, 0, winreg.REG_SZ, f'"{exe}"')
-        winreg.CloseKey(key)
-        return True
-    except OSError:
-        return False
+    return autostart_enable(exe)
 
 
 def disable() -> bool:
-    try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_KEY, 0, winreg.KEY_SET_VALUE)
-        winreg.DeleteValue(key, _APP_NAME)
-        winreg.CloseKey(key)
-        return True
-    except FileNotFoundError:
-        return True  # already absent
-    except OSError:
-        return False
+    return autostart_disable()
 
 
 def set_enabled(enabled: bool) -> bool:

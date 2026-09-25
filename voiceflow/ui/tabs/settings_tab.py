@@ -15,6 +15,7 @@ from voiceflow.api.groq_client import GroqClient
 from voiceflow.api.local_whisper_client import LocalWhisperClient, MODEL_INFO
 from voiceflow.config.schema import AppConfig
 from voiceflow.core import autostart
+from voiceflow.platform import IS_MAC, open_folder
 from voiceflow.ui.widgets.hotkey_capture import HotkeyCaptureWidget
 from voiceflow.ui.widgets.toggle_switch import ToggleSwitch
 
@@ -111,7 +112,8 @@ class SettingsTab(QWidget):
         self._hotkey_widget = HotkeyCaptureWidget()
         self._hotkey_widget.setObjectName("primary")
         self._hotkey_widget.key_captured.connect(self._on_hotkey_captured)
-        hint = QLabel("Click, press your key combo (e.g. Right Alt), then release to confirm.")
+        example_key = "Right Option" if IS_MAC else "Right Alt"
+        hint = QLabel(f"Click, press your key combo (e.g. {example_key}), then release to confirm.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         form.addRow("Record Key:", self._hotkey_widget)
@@ -120,8 +122,9 @@ class SettingsTab(QWidget):
         self._hotkey_assistant_widget = HotkeyCaptureWidget()
         self._hotkey_assistant_widget.setObjectName("primary")
         self._hotkey_assistant_widget.key_captured.connect(self._on_hotkey_captured)
+        assistant_example_key = "Right Cmd" if IS_MAC else "Right Ctrl"
         assistant_hint = QLabel(
-            "Second key — records a command for the AI assistant (e.g. Right Ctrl). "
+            f"Second key — records a command for the AI assistant (e.g. {assistant_example_key}). "
             "The assistant runs it and pastes the result."
         )
         assistant_hint.setObjectName("hint")
@@ -175,7 +178,9 @@ class SettingsTab(QWidget):
         self._stt_provider_combo = QComboBox()
         self._stt_provider_combo.addItem("Gemini (default)", "gemini")
         self._stt_provider_combo.addItem("Groq — Whisper (~10× faster)", "groq")
-        self._stt_provider_combo.addItem("Local — faster-whisper (NVIDIA GPU)", "local")
+        self._stt_provider_combo.addItem(
+            "Local — faster-whisper" if IS_MAC else "Local — faster-whisper (NVIDIA GPU)", "local"
+        )
         self._stt_provider_combo.setFixedWidth(290)
         row.addWidget(self._stt_provider_combo)
         row.addStretch()
@@ -216,9 +221,12 @@ class SettingsTab(QWidget):
         model_row.addWidget(QLabel("Model size:"))
         self._local_model_combo = QComboBox()
         for name, info in MODEL_INFO.items():
-            self._local_model_combo.addItem(
-                f"{name}  ({info['size_mb']} MB · {info['speed']})", name
-            )
+            # The speed figures are GPU timings; faster-whisper has no GPU path on a Mac.
+            if IS_MAC:
+                label = f"{name}  ({info['size_mb']} MB)"
+            else:
+                label = f"{name}  ({info['size_mb']} MB · {info['speed']})"
+            self._local_model_combo.addItem(label, name)
         self._local_model_combo.setFixedWidth(310)
         model_row.addWidget(self._local_model_combo)
         model_row.addStretch()
@@ -565,7 +573,7 @@ class SettingsTab(QWidget):
         group = QGroupBox("System")
         vbox = QVBoxLayout(group)
         row = QHBoxLayout()
-        lbl = QLabel("Start with Windows")
+        lbl = QLabel("Start at login" if IS_MAC else "Start with Windows")
         lbl.setFixedWidth(200)
         self._toggle_autostart = ToggleSwitch()
         self._toggle_autostart.toggled.connect(self._on_autostart_toggled)
@@ -573,7 +581,10 @@ class SettingsTab(QWidget):
         row.addWidget(self._toggle_autostart)
         row.addStretch()
         if not autostart.is_frozen():
-            note = QLabel("(available only in the compiled .exe)")
+            note = QLabel(
+                "(available only in the installed app)" if IS_MAC
+                else "(available only in the compiled .exe)"
+            )
             note.setObjectName("hint")
             row.addWidget(note)
             self._toggle_autostart.setEnabled(False)
@@ -653,6 +664,8 @@ class SettingsTab(QWidget):
         "gemini": "~3–8s  ·  ~$0.003 / 1 000 chars",
         "groq":   "~0.2s  ·  ~$0.001 / 1 000 chars  (groq.com — free tier available)",
         "local":  (
+            "~2–5s on the CPU  ·  free  ·  no internet required"
+            if IS_MAC else
             "~0.15–0.8s  ·  free  ·  no internet required\n"
             "NVIDIA GPU recommended for fast inference (CPU fallback: 2–5s)."
         ),
@@ -662,9 +675,8 @@ class SettingsTab(QWidget):
 
     def _open_models_folder(self):
         from voiceflow.api.local_whisper_client import MODELS_DIR
-        import os
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
-        os.startfile(str(MODELS_DIR))
+        open_folder(MODELS_DIR)
 
     def _refresh_disk_usage(self):
         from voiceflow.api.local_whisper_client import MODELS_DIR
@@ -930,7 +942,14 @@ class SettingsTab(QWidget):
         ok = autostart.set_enabled(enabled)
         if not ok:
             from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Autostart", "Could not update Windows registry.")
+            if IS_MAC:
+                message = (
+                    "Could not add VoiceFlow to login items. "
+                    "Move VoiceFlow to Applications and try again."
+                )
+            else:
+                message = "Could not update Windows registry."
+            QMessageBox.warning(self, "Autostart", message)
             self._toggle_autostart.setChecked(autostart.is_enabled())
 
     def _start_model_download(self):
@@ -961,7 +980,8 @@ class SettingsTab(QWidget):
                 elif s == "loading":
                     _in_loading_phase[0] = True
                     self._download_status.setText(
-                        "Loading model into GPU… (first run may take up to 30s)"
+                        "Loading model… (first run may take up to 30s)" if IS_MAC
+                        else "Loading model into GPU… (first run may take up to 30s)"
                     )
                 elif s.startswith("done:"):
                     self._dl_progress_timer.stop()

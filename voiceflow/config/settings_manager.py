@@ -1,11 +1,11 @@
 import json
-import os
 from dataclasses import asdict, fields
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from voiceflow.config.schema import AppConfig
+from voiceflow.platform import data_dir
 
 
 class SettingsManager(QObject):
@@ -20,8 +20,7 @@ class SettingsManager(QObject):
         self.load()
 
     def _resolve_path(self) -> Path:
-        appdata = os.environ.get("APPDATA", str(Path.home()))
-        return Path(appdata) / "VoiceFlow" / "config.json"
+        return data_dir() / "config.json"
 
     _MODEL_MIGRATIONS = {
         "gemini-2.0-flash": "gemini-2.5-flash",

@@ -100,7 +100,7 @@ def build_stylesheet(theme: str = "dark") -> str:
 QWidget {{
     background-color: {t['bg_app']};
     color: {t['text_1']};
-    font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+    font-family: "Segoe UI Variable", "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
     font-size: 13px;
     border: none;
     outline: 0;
@@ -120,7 +120,7 @@ QLabel#title_brand {{
 QLabel#title_version {{
     color: {t['text_4']};
     font-size: 11px;
-    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace;
     background: transparent;
 }}
 QFrame#status_pill {{
@@ -177,12 +177,12 @@ QWidget#status_bar {{
 }}
 QLabel#status_bar_text {{
     color: {t['text_3']}; font-size: 11px;
-    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace;
     background: transparent;
 }}
 QLabel#status_bar_pill {{
     color: {t['text_2']}; font-size: 10px;
-    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace;
     background: {tint1}; border: 1px solid {t['hairline']};
     border-radius: 3px; padding: 1px 7px;
 }}
@@ -246,7 +246,7 @@ QPushButton#theme_inactive:hover {{
 QPushButton#hotkey_btn {{
     background: {acc10}; color: {t['text_1']};
     border: 1px solid {acc35}; border-radius: 8px;
-    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace;
     font-weight: 600; font-size: 12px;
     padding: 6px 14px; min-height: 36px; min-width: 160px;
 }}
@@ -256,7 +256,7 @@ QPushButton#hotkey_btn:hover {{ background: {acc18}; border-color: {acc50}; }}
 QLineEdit {{
     border: 1px solid {t['border']}; border-radius: 6px;
     padding: 0 11px; background: {t['surface_2']}; color: {t['text_1']};
-    font-size: 12px; font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 12px; font-family: "Cascadia Mono", "Consolas", "Menlo", monospace;
     min-height: 32px;
     selection-background-color: {acc35}; selection-color: {t['text_1']};
 }}
@@ -264,7 +264,7 @@ QLineEdit:focus {{ border-color: {t['accent_deep']}; background: {t['surface_1']
 QLineEdit:disabled {{ background: {t['surface_1']}; color: {t['text_4']}; border-color: {t['hairline']}; }}
 QLineEdit#search_input {{
     background: {t['surface_1']}; border-color: {t['hairline']};
-    font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+    font-family: "Segoe UI Variable", "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
     padding-left: 32px;
 }}
 QLineEdit#search_input:focus {{ border-color: {t['accent_deep']}; }}
@@ -295,15 +295,15 @@ QLabel#model_stale_warning {{ color: {t['danger']}; font-size: 11px; background:
 QLabel#form_label {{ color: {t['text_2']}; font-size: 12px; font-weight: 500; background: transparent; }}
 QLabel#meta_label {{
     color: {t['text_4']}; font-size: 11px;
-    font-family: "Cascadia Mono", "Consolas", monospace; background: transparent;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace; background: transparent;
 }}
 QLabel#card_date {{
     color: {t['text_3']}; font-size: 11px;
-    font-family: "Cascadia Mono", "Consolas", monospace; background: transparent;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace; background: transparent;
 }}
 QLabel#card_duration {{
     color: {t['text_2']}; font-size: 10px;
-    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace;
     background: {tint1}; border: 1px solid {t['hairline']};
     border-radius: 3px; padding: 1px 6px;
 }}
@@ -314,12 +314,12 @@ QLabel#stat_label {{
 }}
 QLabel#stat_value {{
     color: {t['text_1']}; font-size: 22px; font-weight: 600;
-    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace;
     background: transparent; letter-spacing: -1px;
 }}
 QLabel#stat_unit {{
     color: {t['text_3']}; font-size: 10px;
-    font-family: "Cascadia Mono", "Consolas", monospace; background: transparent;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace; background: transparent;
 }}
 QLabel#greeting {{
     color: {t['text_1']}; font-size: 18px; font-weight: 600; background: transparent;
@@ -375,7 +375,7 @@ QLabel#update_text {{
 }}
 QLabel#update_sub {{
     color: {t['text_3']}; font-size: 11px;
-    font-family: "Cascadia Mono", "Consolas", monospace; background: transparent;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace; background: transparent;
 }}
 QProgressBar#update_progress {{
     background: {t['surface_1']}; border: 1px solid {t['hairline']};
@@ -414,11 +414,11 @@ def build_overlay_stylesheet(theme: str = "dark") -> str:
     return f"""
 QLabel#overlay_text {{
     color: #FFFFFF; font-weight: 600; font-size: 13px;
-    font-family: "Segoe UI Variable", "Segoe UI", sans-serif; background: transparent;
+    font-family: "Segoe UI Variable", "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif; background: transparent;
 }}
 QLabel#overlay_timer {{
     color: rgba(255,255,255,0.80); font-weight: 600; font-size: 12px;
-    font-family: "Cascadia Mono", "Consolas", monospace; background: transparent;
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace; background: transparent;
 }}
 QPushButton#overlay_stop {{
     background: rgba(255,255,255,0.18); color: #FFFFFF;

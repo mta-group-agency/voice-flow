@@ -1,8 +1,8 @@
-import ctypes
 import os
 import platform
 import sys
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
@@ -10,6 +10,9 @@ import voiceflow.core.logger as logger
 from voiceflow.__version__ import __version__
 from voiceflow.app import VoiceFlowApp
 from voiceflow.config.settings_manager import SettingsManager
+from voiceflow.platform import (
+    DATA_DIR_DISPLAY, IS_MAC, ensure_single_instance, show_startup_permission_hint,
+)
 
 _STT_MODEL_FIELD = {"gemini": "stt_model", "groq": "groq_stt_model", "local": "local_whisper_model"}
 _AI_MODEL_FIELD = {"gemini": "gemini_ai_model", "claude": "claude_ai_model", "groq": "groq_ai_model"}
@@ -18,22 +21,10 @@ _ASSISTANT_MODEL_FIELD = {
 }
 
 
-def _ensure_single_instance():
-    kernel32 = ctypes.windll.kernel32
-    mutex = kernel32.CreateMutexW(None, False, "VoiceFlow_SingleInstance_Mutex")
-    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            "VoiceFlow is already running.\nCheck the system tray.",
-            "VoiceFlow",
-            0x40,  # MB_ICONINFORMATION
-        )
-        sys.exit(0)
-    return mutex
-
-
 def _app_icon() -> QIcon:
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    if IS_MAC:
+        return QIcon(os.path.join(base, "assets", "common", "icon.png"))
     return QIcon(os.path.join(base, "assets", "windows", "icon.ico"))
 
 
@@ -47,7 +38,7 @@ def _model_for(cfg, mapping: dict, provider) -> str | None:
 
 
 def _log_version(log, log_file) -> None:
-    log_name = f"%APPDATA%\\VoiceFlow\\{log_file.name}" if log_file else "none"
+    log_name = f"{DATA_DIR_DISPLAY}{os.sep}{log_file.name}" if log_file else "none"
     log.info(
         "VoiceFlow %s starting (python=%s, windows=%s, frozen=%s, log=%s)",
         __version__, platform.python_version(), platform.platform(),
@@ -66,7 +57,7 @@ def _log_active_providers(log, cfg) -> None:
 
 
 def main():
-    _mutex = _ensure_single_instance()
+    _instance_lock = ensure_single_instance()
 
     log_file = logger.setup()
     log = logger.get("main")
@@ -85,6 +76,7 @@ def main():
         log.critical("Failed to initialize VoiceFlowApp", exc_info=True)
         sys.exit(1)
 
+    QTimer.singleShot(0, show_startup_permission_hint)
     exit_code = app.exec()
     log.info("VoiceFlow shutting down (exit code %d)", exit_code)
     vf.shutdown()

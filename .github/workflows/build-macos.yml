@@ -1,0 +1,101 @@
+name: Build macOS
+
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - mac-port
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install portaudio (brew)
+        run: brew install portaudio
+
+      - name: Install Python dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements/macos.txt
+
+      - name: Build VoiceFlow.app
+        run: bash packaging/macos/build.sh
+
+      - name: Smoke test (import voiceflow modules, offscreen Qt)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          set -euo pipefail
+          python -c "
+          import voiceflow.platform as p
+          assert p.IS_MAC, 'IS_MAC should be True on a macOS runner'
+          import voiceflow.app  # noqa: F401 - import-time wiring only, no QApplication started
+          print('OK: voiceflow modules import cleanly on macOS (IS_MAC=%s)' % p.IS_MAC)
+          "
+
+      - name: Verify bundle (arch, binary present)
+        run: |
+          set -euo pipefail
+          APP="dist/macos/VoiceFlow.app"
+          BIN="$APP/Contents/MacOS/VoiceFlow"
+          test -d "$APP" || { echo "BLAD: brak $APP"; exit 1; }
+          test -f "$BIN" || { echo "BLAD: brak binarki $BIN"; exit 1; }
+          file "$BIN"
+          file "$BIN" | grep -q "arm64" || { echo "BLAD: binarka $BIN nie jest arm64"; exit 1; }
+          otool -L "$BIN" | head -20
+          echo "OK: bundle wyglada poprawnie (arm64, binarka obecna)."
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceFlow-macos-arm64
+          path: dist/macos/VoiceFlow-macos-arm64.zip
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload zip to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          # /release (Windows) tworzy release recznie i moze to zrobic PO wypchnieciu
+          # taga, wiec czekamy az release sie pojawi zamiast od razu zakladac draft.
+          FOUND=""
+          for i in $(seq 1 20); do
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              FOUND="1"
+              break
+            fi
+            echo "Release $TAG jeszcze nie istnieje (proba $i/20), czekam 30s..."
+            sleep 30
+          done
+
+          if [[ -z "$FOUND" ]]; then
+            echo "Release $TAG nie pojawil sie po ok. 10 minutach, tworze szkic (draft)."
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft \
+              --title "$TAG" \
+              --notes "Szkic release'u utworzony automatycznie przez build-macos.yml (Windows /release jeszcze nie utworzyl release'u dla tego taga)."
+          fi
+
+          gh release upload "$TAG" dist/macos/VoiceFlow-macos-arm64.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

@@ -102,8 +102,13 @@ class RecordingOverlay(QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        # Taking focus would make the paste land in the overlay instead of the target app.
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # macOS hides Tool windows while the app is inactive, which is always the case here.
+        self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow)
         self.setObjectName("overlay_root")
         self.setFixedSize(240, 54)
         self._apply_stylesheet()

@@ -208,9 +208,9 @@ powershell -ExecutionPolicy Bypass -File packaging/windows/build.ps1
 | `voiceflow/` | wspólny kod aplikacji (GUI, pipeline, API, storage) |
 | `assets/common/` | ikony wspólne dla wszystkich systemów |
 | `assets/windows/` | ikony specyficzne dla Windows (`icon.ico`) |
-| `assets/macos/` | ikony specyficzne dla macOS (na razie tylko plan w README) |
+| `assets/macos/` | ikony specyficzne dla macOS (`icon.icns` generowana przy buildzie) |
 | `packaging/windows/` | konfiguracja PyInstaller i skrypt buildu dla Windows |
-| `packaging/macos/` | konfiguracja buildu dla macOS (na razie tylko plan w README) |
+| `packaging/macos/` | konfiguracja buildu dla macOS, build leci w GitHub Actions (jeszcze nieprzetestowany na prawdziwym Macu) |
 | `requirements/` | zależności Pythona (base + per-system) |
 | `TODO/` | plany, w tym plan portu na Maca (`plan-mac.md`) |
 | `dist/windows/`, `build/windows/` | wynik i pliki robocze buildu, poza gitem |
@@ -224,15 +224,18 @@ powershell -ExecutionPolicy Bypass -File packaging/windows/build.ps1
 - build w chmurze (GitHub Actions) -> `.github/workflows/`, jedyny wyjątek od `packaging/<system>/`
   (GitHub szuka workflowów tylko tam)
 - zależność Pythona -> `requirements/<system>.txt` (wspólna dla obu: `requirements/base.txt`)
-- różnice w kodzie -> `voiceflow/platform/` (moduł powstanie w fazie F3 planu, `TODO/plan-mac.md`)
+- różnice w kodzie -> `voiceflow/platform/` (`windows.py` albo `macos.py`; reszta kodu importuje tylko z `voiceflow.platform`)
 
 Nie kopiuj `voiceflow/`, kod aplikacji jest wspólny dla wszystkich systemów.
 
 ## macOS
 
-Wersji na Maca jeszcze nie ma do pobrania. Z kodu też nie ruszy: `python main.py` wywala się na starcie,
-bo kod ma wpięte na sztywno rozwiązania tylko dla Windowsa. `requirements/macos.txt`,
-`packaging/macos/` i `assets/macos/` to przygotowanie pod port, nie używaj ich jeszcze na Macu.
+Wersji na Maca jeszcze nie ma do pobrania. Kod ma już część dla Maca (`voiceflow/platform/macos.py`),
+build leci w GitHub Actions (`packaging/macos/`, `.github/workflows/build-macos.yml`), ale nikt
+jeszcze nie uruchomił ani kodu, ani builda na prawdziwym Macu, więc `python main.py` na Macu i
+gotowy `.app` z CI to na razie eksperyment.
 
-Stan: F1 (układ folderów) zrobione. Dalej: F2 (pomocnik błędów) i F3 (kod pod Maca), potem
-F4 (build Maca w GitHub Actions). Szczegóły: `TODO/plan-mac.md`, a build Maca: `packaging/macos/README.md`.
+Stan: F1 (układ folderów), F3 (kod pod Maca) i F4 (build w GitHub Actions) zrobione, oba
+nieprzetestowane na prawdziwym Macu (F4: pierwszy przebieg CI jeszcze się nie odbył). F2 (pomocnik
+błędów) porzucone. Dalej: test u kolegi z Makiem (F5), potem release (F6).
+Szczegóły: `TODO/plan-mac.md`, a build Maca: `packaging/macos/README.md`.

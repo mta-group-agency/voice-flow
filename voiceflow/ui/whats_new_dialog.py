@@ -14,6 +14,8 @@ from PyQt6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout,
 )
 
+from voiceflow.platform import IS_MAC
+
 _GIF_WIDTH = 432
 _GIF_HEIGHT = 220
 
@@ -32,6 +34,8 @@ WELCOME_BODY = (
     "3. Dla zera kosztów wybierz **Groq** i wklej darmowy klucz API.\n\n"
     "Tyle. Wracaj tu kiedy chcesz — VoiceFlow czeka w tle."
 )
+if IS_MAC:
+    WELCOME_BODY = WELCOME_BODY.replace("Prawy Alt", "Prawy Option")
 WELCOME_VIDEO_URL = ""  # uzupelnij linkiem Loom, gdy powstanie walkthrough
 
 

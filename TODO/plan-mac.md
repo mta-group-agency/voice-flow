@@ -1,7 +1,10 @@
 # Plan: VoiceFlow na Maca (release na GitHubie) + rozdzielenie Windows / Mac w repo
 
-Stan: F1 (układ folderów) zrobione. Dalej: F2 (pomocnik błędów) i F3 (kod pod Maca), potem
-F4 (build Maca w GitHub Actions). Szczegóły niżej, w sekcji Fazy wdrożenia.
+Stan (2026-09-25): F1 (układ folderów) zrobione. F2 (pomocnik błędów) porzucone i przeniesione
+do backlogu. F3 (kod pod Maca) zrobione w kodzie, sprawdzone tylko na Windowsie (na Macu jeszcze
+nie uruchomione). F4 (build Maca w GitHub Actions) zrobione, jeszcze nieprzetestowane (pierwszy
+przebieg CI jeszcze się nie odbył). Dalej: F5 (test u kolegi z Makiem), potem F6 (release).
+Szczegóły niżej, w sekcji Fazy wdrożenia.
 
 Kroki oznaczone Agent / tester / reviewer dotyczą pracy z Claude Code; człowiek może je wykonać ręcznie.
 
@@ -10,7 +13,7 @@ Kroki oznaczone Agent / tester / reviewer dotyczą pracy z Claude Code; człowie
 Dziś VoiceFlow działa tylko na Windowsie. CLAUDE.md wpisywał macOS jako poza scope; po F1 scope
 obejmuje port na Maca. Chcemy wypuszczać w tym samym repo (`mta-group-agency/voice-flow`) drugą
 paczkę dla kolegów z Makami. Ustalone z Mateuszem:
-- build na Maca robi darmowy runner GitHub Actions (`macos-latest`), testuje kolega z Makiem,
+- build na Maca robi darmowy runner GitHub Actions (`macos-14`), testuje kolega z Makiem,
 - bez konta Apple Developer (0 zł): podpis ad-hoc + instrukcja odblokowania w Gatekeeperze
   (macOS 14 i starsze: prawy klik > Otwórz; macOS 15 Sequoia i nowsze: Ustawienia systemowe >
   Prywatność i ochrona > „Otwórz mimo to" po pierwszym zablokowanym uruchomieniu),
@@ -19,6 +22,9 @@ paczkę dla kolegów z Makami. Ustalone z Mateuszem:
 Audyt kodu pokazał, że nie ma ani jednego `sys.platform`; Windows jest wpięty na sztywno w ~12 miejscach.
 
 ## Co blokuje Maca dziś (z audytu)
+
+Po F3 wszystkie wiersze poza Build i Release są obsłużone w kodzie (przez `voiceflow/platform/`),
+ale nie były jeszcze uruchomione na prawdziwym Macu. Build i Release to F4 i F6.
 
 | Obszar | Plik | Problem na Macu |
 |---|---|---|
@@ -49,7 +55,7 @@ VoiceFlow/
 │   └── platform/                  # NOWE: jedyne miejsce z różnicami systemowymi
 │       ├── __init__.py            # wybiera windows albo macos po sys.platform
 │       ├── windows.py             # mutex, winreg, dwmapi, os.startfile, %APPDATA%
-│       └── macos.py               # QLockFile, LaunchAgent, open, ~/Library/Application Support
+│       └── macos.py               # flock, LaunchAgent, open, ~/Library/Application Support
 ├── assets/
 │   ├── common/                    # icon.png, icon_rec.png, icon_proc.png
 │   ├── windows/icon.ico
@@ -80,6 +86,10 @@ Nowe komendy buildu:
 - Wykonanie: Agent sonnet, potem tester.
 
 ### F2. Pomocnik błędów: przy crashu i błędzie użytkownik wie, co zrobić (Windows i Mac)
+**PORZUCONE 2026-09-25, przeniesione do backlogu.** Port na Maca idzie dalej bez tej fazy (F3 nie
+zależy od F2). Rozpoczęta praca leży w `git stash` pod nazwą „F2 M1 how-to-fix (porzucone 2026-09-25)".
+Poprawka klucza Gemini w logu weszła osobno (commit c56fbf8). Opis niżej zostaje jako materiał na później.
+
 Dziś: `core/logger.py:18-26` łapie nieobsłużone wyjątki tylko do logu (użytkownik nic nie widzi),
 `core/pipeline.py:528-530` pokazuje surowe „Error: <treść wyjątku>", wyjątki w wątkach pobocznych
 i twarde crashe biblioteki C (PyAudio, pynput) nie zostawiają śladu. Log (poziom DEBUG) zapisuje też
@@ -115,6 +125,28 @@ Teksty w języku interfejsu aplikacji. Wykonanie: Agent sonnet (katalog + haki),
 wymuszony crash i wymuszone 401/429), reviewer (czy instrukcje są zrozumiałe dla nietechnicznego kolegi).
 
 ### F3. Warstwa platformowa w kodzie (na Windowsie nic się nie zmienia)
+**Stan 2026-09-25: zrobione w kodzie, nieprzetestowane na Macu.** Na Windowsie sprawdzone: te same
+ścieżki danych, ten sam wpis autostartu w rejestrze, te same teksty w oknie, ten sam wynik testu
+przepływu dyktowania, `.exe` się buduje. Gałęzie Maca sprawdzone tylko symulacją na Windowsie
+(podmieniony `sys.platform`), więc prawdziwy test to dopiero F5. Co powstało:
+- `voiceflow/platform/__init__.py` wybiera `windows.py` albo `macos.py`; reszta aplikacji importuje tylko stamtąd,
+- Mac: dane w `~/Library/Application Support/VoiceFlow/`, jedna instancja przez `flock` na pliku
+  `voiceflow.lock`, autostart jako LaunchAgent `~/Library/LaunchAgents/com.mta.voiceflow.plist`
+  (odmawia, gdy aplikacja działa z Pobranych w trybie App Translocation), wklejanie Cmd+V z 50 ms
+  przerwy po ustawieniu schowka, bez cienia okna,
+- Mac: przy starcie sprawdzenie zgody Dostępność (`AXIsProcessTrusted` przez ctypes, bez pyobjc) i
+  Monitorowania wprowadzania (`IOHIDCheckAccess`); bez zgody na Dostępność najpierw systemowy
+  prompt (`AXIsProcessTrustedWithOptions`, dodaje VoiceFlow do listy w Ustawieniach), potem, jeśli
+  dalej brakuje którejś zgody, własne okno z instrukcją i przyciskiem do właściwego panelu,
+- overlay nie bierze fokusu (też na Windowsie) i na Macu nie znika, gdy VoiceFlow nie jest aktywny,
+- tray: na Macu klik na ikonie otwiera menu paska menu (jak w macOS, bez dwukliku), z niego
+  "Open VoiceFlow" otwiera okno; etykiety klawiszy (Right Option, Cmd, Control), podpowiedzi w
+  Ustawieniach, powitanie („Prawy Option") i czcionki (Helvetica Neue, Menlo) zależne od systemu,
+- teksty o GPU NVIDIA tylko na Windowsie; na Macu autostart nazywa się „Start at login",
+- updater: na Macu asset `VoiceFlow-macos-arm64.zip`, bez samoaktualizacji, baner mówi „rozpakuj
+  i przenieś do Applications".
+
+Plan pierwotny:
 - `voiceflow/platform/`: ścieżka danych, jedna instancja, autostart, otwarcie folderu, cień okna, klawisz wklejania,
 - podpiąć w `main.py`, `autostart.py`, `settings_manager.py`, `logger.py`, `local_whisper_client.py`, `settings_tab.py`, `main_window.py`, `text_injector.py`,
 - overlay: dodać flagi bez fokusu (pomaga też Windowsowi),
@@ -125,17 +157,19 @@ wymuszony crash i wymuszone 401/429), reviewer (czy instrukcje są zrozumiałe d
 - Wykonanie: Agent sonnet (moduł po module), tester po każdym.
 
 ### F4. Build na Maca w chmurze
+**Stan 2026-09-25: zrobione, nieprzetestowane (pierwszy przebieg CI jeszcze się nie odbył).**
 Zaczynać po F3: bez niej `VoiceFlow.app` się zbuduje, ale wywali się na starcie. Budować da się tylko
 na Macu albo w GitHub Actions (PyInstaller nie robi `.app` na Windowsie). Docelowe pliki opisuje też
 `packaging/macos/README.md`.
 - `packaging/macos/voiceflow.spec` (punkt wyjścia: `packaging/windows/voiceflow.spec`): ukryte importy
   `pynput.keyboard._darwin` i `pynput.mouse._darwin`, `BUNDLE` z `Info.plist`
   (`NSMicrophoneUsageDescription`, `LSUIElement` = tylko ikona w pasku menu, bez Docka), `.icns`,
-- `build.sh`: `brew install portaudio`, `pip install -r requirements/macos.txt`, build,
-  `codesign --force --deep -s -` (ad-hoc), zip przez `ditto`,
-- workflow `.github/workflows/build-macos.yml` (GitHub szuka workflowów tylko w `.github/workflows/`,
-  to jedyny wyjątek od `packaging/<system>/`): na push tagu `v*` buduje i dokleja
-  `VoiceFlow-macos-arm64.zip` do tego samego release'u; do doklejania potrzebuje `permissions: contents: write`,
+- z F3 dla speca Maca: `CFBundleIdentifier` = `com.mta.voiceflow` (ta sama nazwa co LaunchAgent);
+  z listy `excludes` usunąć `xml`, bo `plistlib` w `voiceflow/platform/macos.py` potrzebuje
+  `xml.parsers.expat` (inaczej aplikacja wywali się na starcie); `datas` jak na Windowsie
+  z `assets/common` (ikona okna i paska menu),
+- `build.sh`: generuje ikonę, uruchamia PyInstaller, podpis ad-hoc (`codesign --force --deep -s -`), zip via `ditto`,
+- workflow `.github/workflows/build-macos.yml` (GitHub szuka workflowów tylko w `.github/workflows/`, jedyny wyjątek od `packaging/<system>/`): instaluje zależności (`brew install portaudio`, `pip install -r requirements/macos.txt`), następnie buduje; uruchamiany na push tagu `v*`, push do gałęzi `mac-port` oraz ręczny `workflow_dispatch`; dokleja `VoiceFlow-macos-arm64.zip` do release'u tylko dla tagów `v*`; wymaga `permissions: contents: write`,
 - `generate_icons.py`: dodatkowo `.icns` i ikony paska menu (do `assets/macos/`, opis w `assets/macos/README.md`).
 - Wykonanie: Agent sonnet, błędy builda: `build-error-resolver`.
 
@@ -166,13 +200,13 @@ Checklista do przekazania (bez tego nie wydajemy):
 Autoaktualizacja Maca (podmiana całego `.app`), ewentualnie konto Apple, szybszy lokalny Whisper na Apple Silicon (mlx-whisper), wersja Intel.
 
 ## Główne ryzyka
-- **pynput na nowszych macOS:** znane zgłoszenia crashy, gdy nasłuch klawiatury odpytuje układ klawiatury poza głównym wątkiem. To bezpośrednio uderza w cel „zero crashy". Sprawdzamy to jako pierwszy punkt F5; crash złapie pomocnik z F2 i od razu powie koledze, co odesłać; gdy się potwierdzi, zamiana nasłuchu na Macu na Quartz event tap (pyobjc) w `voiceflow/platform/macos.py`.
-- **Uprawnienia po aktualizacji:** przy podpisie ad-hoc macOS może traktować nową wersję jak nową aplikację i zdjąć zgodę na Dostępność. Łagodzimy instrukcją, sprawdzeniem uprawnień przy starcie (F3) i wpisem w katalogu błędów (F2).
-- **Brak Maca u autora:** każdy błąd widoczny tylko na Macu wymaga rundy przez kolegę; dlatego „Kopiuj raport" i „Diagnostyka" z F2 (log w `~/Library/Application Support/VoiceFlow/`).
+- **pynput na nowszych macOS:** znane zgłoszenia crashy, gdy nasłuch klawiatury odpytuje układ klawiatury poza głównym wątkiem. To bezpośrednio uderza w cel „zero crashy". Sprawdzamy to jako pierwszy punkt F5; bez pomocnika z F2 (porzucone) kolega odsyła log z `~/Library/Application Support/VoiceFlow/voiceflow.log`; gdy się potwierdzi, zamiana nasłuchu na Macu na Quartz event tap (pyobjc) w `voiceflow/platform/macos.py`.
+- **Uprawnienia po aktualizacji:** przy podpisie ad-hoc macOS może traktować nową wersję jak nową aplikację i zdjąć zgodę na Dostępność. Łagodzimy instrukcją, sprawdzeniem uprawnień przy starcie (F3, jest w kodzie).
+- **Brak Maca u autora:** każdy błąd widoczny tylko na Macu wymaga rundy przez kolegę; „Kopiuj raport" i „Diagnostyka" z F2 odpadły razem z F2, więc kolega odsyła plik logu z `~/Library/Application Support/VoiceFlow/`.
 
 ## Weryfikacja
 - F1 i F3: agent `tester` + ręcznie `dist/windows/VoiceFlow.exe` (nagranie, wklejenie, autostart, aktualizacja), potem `reviewer`.
-- F2: tester wymusza zły klucz (401), limit (429), brak sieci, wyjątek w wątku i twardy crash (`faulthandler._sigsegv()` w trybie testowym); za każdym razem ma się pojawić zrozumiała instrukcja, po crashu okno przy następnym starcie, w raporcie brak kluczy.
+- F2 (porzucone, dotyczy powrotu z backlogu): tester wymusza zły klucz (401), limit (429), brak sieci, wyjątek w wątku i twardy crash (`faulthandler._sigsegv()` w trybie testowym); za każdym razem ma się pojawić zrozumiała instrukcja, po crashu okno przy następnym starcie, w raporcie brak kluczy.
 - F4: zielony workflow w GitHub Actions, zip w artefaktach, `codesign -dv` w logu.
-- F5: checklista kolegi odhaczona w całości, plus jeden „Kopiuj raport" z Diagnostyki.
+- F5: checklista kolegi odhaczona w całości, plus plik `voiceflow.log` z jego Maca.
 - F6: release z dwoma plikami, Windows 1.3.0 wykrywa nową wersję.

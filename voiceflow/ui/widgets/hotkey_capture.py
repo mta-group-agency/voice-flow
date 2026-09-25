@@ -8,6 +8,8 @@ from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import QPushButton
 from pynput import keyboard
 
+from voiceflow.platform import IS_MAC
+
 _NORMALIZE = {
     "Key.ctrl_l": "Key.ctrl",
     "Key.ctrl_r": "Key.ctrl",
@@ -30,6 +32,14 @@ _DISPLAY = {
     "Key.space": "Space",
     **{f"Key.f{i}": f"F{i}" for i in range(1, 13)},
 }
+if IS_MAC:
+    _DISPLAY.update({
+        "Key.ctrl": "Control",
+        "Key.alt": "Option",
+        "Key.alt_r": "Right Option",
+        "Key.cmd": "Cmd",
+        "Key.cmd_r": "Right Cmd",
+    })
 
 _MODIFIER_ORDER = [
     "Key.ctrl", "Key.shift", "Key.alt", "Key.alt_r", "Key.cmd", "Key.cmd_r"

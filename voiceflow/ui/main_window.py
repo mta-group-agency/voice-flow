@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from voiceflow.__version__ import __version__
+from voiceflow.platform import apply_window_shadow
 from voiceflow.ui import theme
 from voiceflow.ui.tabs.history_tab import HistoryTab
 from voiceflow.ui.tabs.home_tab import HomeTab
@@ -240,7 +241,7 @@ class _StatusBar(QWidget):
     def _update_dot(self, color: str):
         self._dot.setStyleSheet(
             f"color: {color}; background: transparent;"
-            f" font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 11px;"
+            f" font-family: 'Cascadia Mono', 'Consolas', 'Menlo', monospace; font-size: 11px;"
         )
 
 
@@ -391,21 +392,7 @@ class MainWindow(QMainWindow):
         self._border_overlay.raise_()
 
     def _apply_dwm_shadow(self):
-        import ctypes
-        from ctypes import Structure, c_int, byref
-
-        class MARGINS(Structure):
-            _fields_ = [
-                ("cxLeftWidth", c_int), ("cxRightWidth", c_int),
-                ("cyTopHeight", c_int), ("cyBottomHeight", c_int),
-            ]
-
-        try:
-            ctypes.windll.dwmapi.DwmExtendFrameIntoClientArea(
-                int(self.winId()), byref(MARGINS(1, 1, 1, 1))
-            )
-        except Exception:
-            pass
+        apply_window_shadow(int(self.winId()))
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key.Key_Escape:
