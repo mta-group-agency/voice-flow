@@ -324,13 +324,9 @@ class MainWindow(QMainWindow):
 
         self._home_tab.view_all_clicked.connect(lambda: self._switch_tab(1))
         self._settings_tab.theme_requested.connect(self.set_theme)
-        self._settings_tab.settings_saved.connect(
-            lambda: self._status_bar.refresh_model(settings.config)
-        )
+        self._settings_tab.settings_saved.connect(self._on_settings_saved)
         self._settings_tab.provider_keys_changed.connect(self.provider_keys_changed)
-        self._settings_tab.test_config_changed.connect(
-            lambda: self._status_bar.refresh_model(self._settings.config)
-        )
+        self._settings_tab.test_config_changed.connect(self._on_settings_saved)
 
         pipeline.state_changed.connect(self._on_state_changed)
         pipeline.error_occurred.connect(self._on_error)
@@ -378,6 +374,12 @@ class MainWindow(QMainWindow):
         self._settings_tab.update_theme_buttons(mode)
         self._settings.set("theme", mode)
         self.theme_changed.emit(mode)
+
+    def _on_settings_saved(self):
+        from voiceflow.core.pipeline import State
+        self._status_bar.refresh_model(self._settings.config)
+        if self._pipeline.state == State.IDLE:
+            self._on_state_changed(State.IDLE)
 
     def _on_state_changed(self, state):
         from voiceflow.core.pipeline import State

@@ -15,26 +15,28 @@ from PyQt6.QtWidgets import (
 )
 
 from voiceflow.platform import IS_MAC
+from voiceflow.ui import theme
 
 _GIF_WIDTH = 432
 _GIF_HEIGHT = 220
+_BODY_MIN_HEIGHT = 160
+_BODY_MAX_HEIGHT = 480
 
 WELCOME_TITLE = "Witaj w VoiceFlow"
 WELCOME_BODY = (
-    "Mówisz — pojawia się gotowy tekst tam, gdzie akurat piszesz. Bez przepisywania, "
+    "Mówisz, pojawia się gotowy tekst tam, gdzie akurat piszesz. Bez przepisywania, "
     "bez przeklikiwania.\n\n"
+    "**Jak zacząć:**\n\n"
+    "1. Otwórz **Ustawienia (Settings) > API Keys**, wklej darmowy klucz Groq z "
+    "[console.groq.com/keys](https://console.groq.com/keys) i kliknij **Test**.\n"
+    "2. Przytrzymaj **prawy Alt**, mów, puść.\n\n"
     "**Dwa tryby:**\n\n"
-    "- **Prawy Alt — dyktowanie.** Przytrzymaj, powiedz co chcesz, puść — transkrypcja "
+    "- **Prawy Alt: dyktowanie.** Przytrzymaj, powiedz co chcesz, puść: transkrypcja "
     "wkleja się sama.\n"
-    "- **Drugi hotkey — Asystent AI.** Powiedz polecenie (np. \"odpisz grzecznie, że nie "
-    "dam rady\"), a AI wykona je i wklei gotowy wynik.\n\n"
-    "**Jak zacząć (1 minuta):**\n\n"
-    "1. Dyktowanie zadziała domyślnym hotkeyem (prawy Alt), gdy tylko dodasz klucz "
-    "Groq z kroku 2 poniżej. Drugi hotkey (Asystent) jest opcjonalny, ustawisz go "
-    "później, jeśli będzie potrzebny.\n"
-    "2. Otwórz **Ustawienia**, w sekcji **API Keys** wklej darmowy klucz Groq z "
-    "[console.groq.com/keys](https://console.groq.com/keys) i kliknij **Test**.\n\n"
-    "Tyle. Wracaj tu kiedy chcesz — VoiceFlow czeka w tle."
+    "- **Drugi hotkey: Asystent AI.** Powiedz polecenie (np. \"odpisz grzecznie, że nie "
+    "dam rady\"), a AI wykona je i wklei gotowy wynik. Opcjonalny, ustawisz go później, "
+    "jeśli będzie potrzebny.\n\n"
+    "Tyle. Wracaj tu kiedy chcesz. VoiceFlow czeka w tle."
 )
 if IS_MAC:
     WELCOME_BODY = (
@@ -128,11 +130,15 @@ class WhatsNewDialog(QDialog):
 
         browser = QTextBrowser()
         browser.setObjectName("dialog_body")
+        accent = theme.get_accent()
+        browser.document().setDefaultStyleSheet(f"a {{ color: {accent}; }}")
         browser.setMarkdown(body)
         browser.setOpenExternalLinks(True)
-        browser.setMinimumHeight(220)
-        browser.setMaximumHeight(320)
+        browser.setMinimumHeight(_BODY_MIN_HEIGHT)
+        browser.setMaximumHeight(_BODY_MAX_HEIGHT)
         lay.addWidget(browser)
+        self._body_browser = browser
+        self._fit_body_height()
 
         if video_url:
             video_btn = QPushButton("▶ Obejrzyj pełne wideo")
@@ -165,6 +171,27 @@ class WhatsNewDialog(QDialog):
             row.addWidget(primary_btn)
 
         lay.addLayout(row)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._fit_body_height()
+
+    def _fit_body_height(self):
+        # QTextBrowser doesn't grow to its document by itself: without this the
+        # welcome text (added as the "Jak zacząć" step grew) got clipped behind a
+        # fixed max-height and needed scrolling to reach the Groq key step.
+        browser = self._body_browser
+        doc = browser.document()
+        width = browser.viewport().width()
+        if width <= 0:
+            doc_margin = int(doc.documentMargin()) * 2
+            width = max(self.minimumWidth() - 48 - 24 - 2 - doc_margin, 240)
+        doc.setTextWidth(width)
+        content_height = int(doc.size().height())
+        chrome = 30  # QSS border (1px*2) + padding (10px top/bottom) + rounding slack
+        total = max(_BODY_MIN_HEIGHT, min(content_height + chrome, _BODY_MAX_HEIGHT))
+        browser.setMinimumHeight(total)
+        browser.setMaximumHeight(total)
 
     def _with_play_overlay(self, pixmap: QPixmap) -> QPixmap:
         result = QPixmap(pixmap)
