@@ -74,14 +74,27 @@ jobs:
 
           # `script` daje binarce pty, zeby uznala stderr za terminal i tam tez logowala
           # (core/logger.py loguje do stderr tylko, gdy sys.stderr.isatty()); w CI bez
-          # tego nie byloby nic do wydrukowania poza plikiem logu.
-          script -q "$OUT" "$BIN" &
+          # tego nie byloby nic do wydrukowania poza plikiem logu. Nagrywanie samego
+          # `script` idzie do /dev/null (jego wewnetrzny bufor pliku typescript potrafi
+          # zostac niesflushowany, gdy proces zabijemy sygnalem); zamiast tego lapiemy
+          # wyjscie zwyklym przekierowaniem powloki, ktore pisze od razu.
+          script -q /dev/null "$BIN" > "$OUT" 2>&1 &
           PID=$!
 
           sleep 20
 
           ALIVE=0
           kill -0 "$PID" 2>/dev/null && ALIVE=1 || true
+
+          # Zabij przed odczytem plikow (rowniez gdy juz sam sie zakonczyl - kill wtedy
+          # nic nie robi), zeby wszystko, co proces jeszcze mial do zapisania, zdazylo
+          # trafic na dysk zanim to wydrukujemy.
+          kill "$PID" 2>/dev/null || true
+          pkill -f "Contents/MacOS/VoiceFlow" 2>/dev/null || true
+          set +e
+          wait "$PID"
+          EXIT_CODE=$?
+          set -e
 
           echo "--- stdout/stderr (przechwycone przez script, pty) ---"
           cat "$OUT" 2>/dev/null || echo "(brak pliku)"
@@ -99,14 +112,7 @@ jobs:
             # prosbie o uprawnienia systemowe (Dostepnosc / Monitorowanie wprowadzania),
             # wiec "dalej dziala po 20s" jest tu wynikiem pozytywnym, nie zawieszeniem.
             echo "OK: aplikacja wciaz dziala po 20s (oczekiwany wynik pierwszego uruchomienia)."
-            kill "$PID" 2>/dev/null || true
-            pkill -f "Contents/MacOS/VoiceFlow" 2>/dev/null || true
-            wait "$PID" 2>/dev/null || true
           else
-            set +e
-            wait "$PID"
-            EXIT_CODE=$?
-            set -e
             echo "BLAD: aplikacja zakonczyla dzialanie sama w ciagu 20s (kod wyjscia: $EXIT_CODE)."
             echo "Na prawdziwym Macu tez by sie nie uruchomila."
             exit 1
