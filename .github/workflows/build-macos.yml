@@ -59,6 +59,59 @@ jobs:
           otool -L "$BIN" | head -20
           echo "OK: bundle wyglada poprawnie (arm64, binarka obecna)."
 
+      - name: Launch test (built app)
+        run: |
+          set -euo pipefail
+          APP="dist/macos/VoiceFlow.app"
+          BIN="$APP/Contents/MacOS/VoiceFlow"
+
+          # Swiezy $HOME, zeby "~/Library/Application Support/VoiceFlow" nie mial nic z
+          # wczesniejszych krokow (Smoke test importuje moduly, ale nie odpala VoiceFlow).
+          export HOME="$RUNNER_TEMP/voiceflow-launch-home"
+          mkdir -p "$HOME"
+          export QT_QPA_PLATFORM=offscreen
+          OUT="$RUNNER_TEMP/launch-test-output.log"
+
+          # `script` daje binarce pty, zeby uznala stderr za terminal i tam tez logowala
+          # (core/logger.py loguje do stderr tylko, gdy sys.stderr.isatty()); w CI bez
+          # tego nie byloby nic do wydrukowania poza plikiem logu.
+          script -q "$OUT" "$BIN" &
+          PID=$!
+
+          sleep 20
+
+          ALIVE=0
+          kill -0 "$PID" 2>/dev/null && ALIVE=1 || true
+
+          echo "--- stdout/stderr (przechwycone przez script, pty) ---"
+          cat "$OUT" 2>/dev/null || echo "(brak pliku)"
+
+          echo "--- voiceflow.log ---"
+          LOGFILE="$HOME/Library/Application Support/VoiceFlow/voiceflow.log"
+          if [ -f "$LOGFILE" ]; then
+            cat "$LOGFILE"
+          else
+            echo "(brak pliku logu)"
+          fi
+
+          if [ "$ALIVE" -eq 1 ]; then
+            # Pierwsze uruchomienie blokuje sie w exec() na oknie powitalnym albo na
+            # prosbie o uprawnienia systemowe (Dostepnosc / Monitorowanie wprowadzania),
+            # wiec "dalej dziala po 20s" jest tu wynikiem pozytywnym, nie zawieszeniem.
+            echo "OK: aplikacja wciaz dziala po 20s (oczekiwany wynik pierwszego uruchomienia)."
+            kill "$PID" 2>/dev/null || true
+            pkill -f "Contents/MacOS/VoiceFlow" 2>/dev/null || true
+            wait "$PID" 2>/dev/null || true
+          else
+            set +e
+            wait "$PID"
+            EXIT_CODE=$?
+            set -e
+            echo "BLAD: aplikacja zakonczyla dzialanie sama w ciagu 20s (kod wyjscia: $EXIT_CODE)."
+            echo "Na prawdziwym Macu tez by sie nie uruchomila."
+            exit 1
+          fi
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:

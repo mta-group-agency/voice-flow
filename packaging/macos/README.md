@@ -1,9 +1,9 @@
 # packaging/macos
 
 Konfiguracja buildu VoiceFlow na macOS. Stan (2026-09-25, zgodny z `TODO/plan-mac.md`): F1, F3
-i F4 zrobione, F2 porzucone. F4 (ten katalog) zrobione, ale jeszcze nieprzetestowane: build leci
-w GitHub Actions na tagu `v*`, na branchu `mac-port` (do testów) albo ręcznie, tylko pierwszy
-przebieg CI jeszcze się nie odbył. Dalej: F5 (test u kolegi z Makiem), potem F6 (release).
+i F4 zrobione, F2 porzucone. F4 (ten katalog): build w GitHub Actions działa i sprawdza
+uruchomienie aplikacji, arm64, podpis ad-hoc, zip około 90 MB. Dalej: F5 (test u kolegi z Makiem),
+potem F6 (release).
 
 Zanim zaczniesz:
 
@@ -37,10 +37,15 @@ Poza tym katalogiem:
   jedyny wyjątek od zasady "build dla systemu w `packaging/<system>/`"). Instaluje `portaudio`
   przez brew, `requirements/macos.txt`, odpala `build.sh`, robi smoke test
   (import modułów `voiceflow` z `QT_QPA_PLATFORM=offscreen`, sprawdzenie że binarka jest arm64),
-  wrzuca zip jako artefakt (14 dni) zawsze, a na tagu `v*` dokleja go do release'u tego taga
-  (czeka do ~10 minut, aż release się pojawi, bo `/release` na Windowsie tworzy go ręcznie i
-  może to zrobić już po wypchnięciu taga; jeśli po tym czasie release nadal nie istnieje, tworzy
-  szkic).
+  potem krok "Launch test" odpala zbudowaną `.app` na runnerze (offscreen, świeży `$HOME`, żeby
+  `~/Library/Application Support/VoiceFlow` był pusty), czeka około 20 s: jeśli proces w tym
+  czasie sam się zakończył, krok jest czerwony (aplikacja nie uruchomiłaby się też na prawdziwym
+  Macu); jeśli dalej działa, to wynik pozytywny (pierwszy start blokuje się w `exec()` na oknie
+  powitalnym albo prośbie o uprawnienia), krok gasi proces i przechodzi dalej; zawsze drukuje
+  w logu przebiegu plik `voiceflow.log` z tego uruchomienia, wrzuca zip jako artefakt (14 dni)
+  zawsze, a na tagu `v*` dokleja go do release'u tego taga (czeka do ~10 minut, aż release się
+  pojawi, bo `/release` na Windowsie tworzy go ręcznie i może to zrobić już po wypchnięciu taga;
+  jeśli po tym czasie release nadal nie istnieje, tworzy szkic).
 - `requirements/macos.txt`: zależności Pythona na Macu (PyAudio wymaga wcześniej `brew install portaudio`;
   zawiera też `pyobjc-framework-Quartz` i `pyobjc-framework-ApplicationServices`, potrzebne przez
   darwinowy backend `pynput`).
@@ -81,18 +86,32 @@ zmergowana, jedyny sposób na odpalenie builda to push na `mac-port` jak wyżej.
 
 ### 2. Obejrzyj build
 
-GitHub > zakładka Actions > "Build macOS" > najnowszy przebieg na `mac-port`. Zielony haczyk = build
-się udał.
+GitHub > zakładka Actions > "Build macOS" > najnowszy przebieg na `mac-port`. Build trwa zwykle
+około 2 minuty. Jeden z kroków ("Launch test") odpala zbudowaną aplikację na runnerze i sprawdza,
+czy działa; jeśli ten krok jest czerwony, aplikacja nie uruchomiłaby się też na prawdziwym Macu.
+Zielony haczyk = build się udał, przejdź do kroku 3.
+
+Czerwony krzyżyk = build się nie udał. Wtedy:
+
+1. Nic nie wysyłaj koledze.
+2. Otwórz ten przebieg, kliknij krok z czerwonym krzyżykiem, skopiuj jego log i wklej go Claude'owi.
+   Zamiast tego możesz w folderze repo wpisać `gh run view --log-failed` (wybierz z listy najnowszy
+   przebieg) i wkleić Claude'owi to, co się wypisze.
+3. Po poprawce, będąc na branchu `mac-port`, wpisz `git add -A`, `git commit -m "..."`, `git push`.
+   To samo odpala nowy build, wróć wtedy na początek tego kroku.
 
 ### 3. Pobierz wynik i wyślij koledze
 
-1. W tym przebiegu, sekcja Artifacts > pobierz `VoiceFlow-macos-arm64` (to jest zip zawierający
+1. Pobieraj artefakt tylko z przebiegu, którego commit zgadza się z Twoim ostatnim git push (na
+   liście przebiegów w Actions widać nazwę commita); starsze przebiegi nie mają ostatnich poprawek.
+   W tym przebiegu, sekcja Artifacts > pobierz `VoiceFlow-macos-arm64` (to jest zip zawierający
    w środku plik `VoiceFlow-macos-arm64.zip`).
 2. Na Windowsie kliknij na pobrany plik prawym > "Wyodrębnij wszystkie" **dokładnie raz**. W
    wyodrębnionym folderze znajdziesz `VoiceFlow-macos-arm64.zip`, to jest właściwa paczka dla Maca.
-3. Wyślij koledze ten wewnętrzny plik `VoiceFlow-macos-arm64.zip` **bez zmian** (Slack, Dysk, mail:
-   cokolwiek, byle nie przez GitHuba, bo kolega bez dostępu do repo i tak nie ściągnie artefaktu z
-   Actions).
+3. Wyślij koledze ten wewnętrzny plik `VoiceFlow-macos-arm64.zip` **bez zmian**, przez Slacka albo
+   Dysk Google (na Dysku ustaw dostęp "Każda osoba mająca link"). Nie mailem: paczka (PyQt i
+   biblioteka faster-whisper w środku) ma około 90 MB, więcej niż limit załącznika w mailu.
+   I nie przez GitHuba, bo kolega bez dostępu do repo nie ściągnie artefaktu z Actions.
 
 **Nie rozpakowuj tego wewnętrznego zipa na Windowsie i nie pakuj go ponownie.** Windows przy
 rozpakowaniu i ponownym spakowaniu gubi uprawnienia wykonywalne pliku i linki symboliczne w środku

@@ -2,9 +2,9 @@
 
 Stan (2026-09-25): F1 (układ folderów) zrobione. F2 (pomocnik błędów) porzucone i przeniesione
 do backlogu. F3 (kod pod Maca) zrobione w kodzie, sprawdzone tylko na Windowsie (na Macu jeszcze
-nie uruchomione). F4 (build Maca w GitHub Actions) zrobione, jeszcze nieprzetestowane (pierwszy
-przebieg CI jeszcze się nie odbył). Dalej: F5 (test u kolegi z Makiem), potem F6 (release).
-Szczegóły niżej, w sekcji Fazy wdrożenia.
+nie uruchomione). F4 (build Maca w GitHub Actions) zrobione: build w GitHub Actions działa
+i sprawdza uruchomienie aplikacji, arm64, podpis ad-hoc, zip około 90 MB. Dalej: F5 (test
+u kolegi z Makiem), potem F6 (release). Szczegóły niżej, w sekcji Fazy wdrożenia.
 
 Kroki oznaczone Agent / tester / reviewer dotyczą pracy z Claude Code; człowiek może je wykonać ręcznie.
 
@@ -157,7 +157,8 @@ Plan pierwotny:
 - Wykonanie: Agent sonnet (moduł po module), tester po każdym.
 
 ### F4. Build na Maca w chmurze
-**Stan 2026-09-25: zrobione, nieprzetestowane (pierwszy przebieg CI jeszcze się nie odbył).**
+**Stan 2026-09-25: zrobione, build w GitHub Actions działa i sprawdza uruchomienie aplikacji
+(krok "Launch test"), arm64, podpis ad-hoc, zip około 90 MB.**
 Zaczynać po F3: bez niej `VoiceFlow.app` się zbuduje, ale wywali się na starcie. Budować da się tylko
 na Macu albo w GitHub Actions (PyInstaller nie robi `.app` na Windowsie). Docelowe pliki opisuje też
 `packaging/macos/README.md`.
@@ -169,7 +170,7 @@ na Macu albo w GitHub Actions (PyInstaller nie robi `.app` na Windowsie). Docelo
   `xml.parsers.expat` (inaczej aplikacja wywali się na starcie); `datas` jak na Windowsie
   z `assets/common` (ikona okna i paska menu),
 - `build.sh`: generuje ikonę, uruchamia PyInstaller, podpis ad-hoc (`codesign --force --deep -s -`), zip via `ditto`,
-- workflow `.github/workflows/build-macos.yml` (GitHub szuka workflowów tylko w `.github/workflows/`, jedyny wyjątek od `packaging/<system>/`): instaluje zależności (`brew install portaudio`, `pip install -r requirements/macos.txt`), następnie buduje; uruchamiany na push tagu `v*`, push do gałęzi `mac-port` oraz ręczny `workflow_dispatch`; dokleja `VoiceFlow-macos-arm64.zip` do release'u tylko dla tagów `v*`; wymaga `permissions: contents: write`,
+- workflow `.github/workflows/build-macos.yml` (GitHub szuka workflowów tylko w `.github/workflows/`, jedyny wyjątek od `packaging/<system>/`): instaluje zależności (`brew install portaudio`, `pip install -r requirements/macos.txt`), następnie buduje; krok "Launch test" odpala zbudowaną `.app` na runnerze (offscreen, świeży `$HOME`), czeka około 20 s i sprawdza, czy proces nadal działa (pierwszy start blokuje się na oknie powitalnym / prośbie o uprawnienia), zawsze drukuje `voiceflow.log`; uruchamiany na push tagu `v*`, push do gałęzi `mac-port` oraz ręczny `workflow_dispatch`; dokleja `VoiceFlow-macos-arm64.zip` do release'u tylko dla tagów `v*`; wymaga `permissions: contents: write`,
 - `generate_icons.py`: dodatkowo `.icns` i ikony paska menu (do `assets/macos/`, opis w `assets/macos/README.md`).
 - Wykonanie: Agent sonnet, błędy builda: `build-error-resolver`.
 

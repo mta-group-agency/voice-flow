@@ -236,6 +236,7 @@ jeszcze nie uruchomił ani kodu, ani builda na prawdziwym Macu, więc `python ma
 gotowy `.app` z CI to na razie eksperyment.
 
 Stan: F1 (układ folderów), F3 (kod pod Maca) i F4 (build w GitHub Actions) zrobione, oba
-nieprzetestowane na prawdziwym Macu (F4: pierwszy przebieg CI jeszcze się nie odbył). F2 (pomocnik
-błędów) porzucone. Dalej: test u kolegi z Makiem (F5), potem release (F6).
+nieprzetestowane na prawdziwym Macu (F4: build w GitHub Actions działa i sprawdza uruchomienie
+aplikacji, paczka około 90 MB). F2 (pomocnik błędów) porzucone. Dalej: test u kolegi z Makiem (F5),
+potem release (F6).
 Szczegóły: `TODO/plan-mac.md`, a build Maca: `packaging/macos/README.md`.

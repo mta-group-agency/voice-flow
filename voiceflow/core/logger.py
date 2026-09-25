@@ -95,8 +95,13 @@ def setup() -> Path | None:
     log_file = log_dir / "voiceflow.log"
 
     handler, used_file = _make_handler(log_file)
+    handlers = [handler]
+    if sys.stderr is not None and sys.stderr.isatty():
+        stream_handler = logging.StreamHandler(sys.stderr)
+        stream_handler.setFormatter(_RedactingFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+        handlers.append(stream_handler)
 
-    logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+    logging.basicConfig(level=logging.DEBUG, handlers=handlers)
     for noisy in ("urllib3", "httpx", "httpcore", "anthropic"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
