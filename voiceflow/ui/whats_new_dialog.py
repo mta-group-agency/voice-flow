@@ -29,13 +29,19 @@ WELCOME_BODY = (
     "- **Drugi hotkey — Asystent AI.** Powiedz polecenie (np. \"odpisz grzecznie, że nie "
     "dam rady\"), a AI wykona je i wklei gotowy wynik.\n\n"
     "**Jak zacząć (1 minuta):**\n\n"
-    "1. Otwórz **Ustawienia**.\n"
-    "2. Ustaw oba hotkeye pod siebie.\n"
-    "3. Dla zera kosztów wybierz **Groq** i wklej darmowy klucz API.\n\n"
+    "1. Dyktowanie zadziała domyślnym hotkeyem (prawy Alt), gdy tylko dodasz klucz "
+    "Groq z kroku 2 poniżej. Drugi hotkey (Asystent) jest opcjonalny, ustawisz go "
+    "później, jeśli będzie potrzebny.\n"
+    "2. Otwórz **Ustawienia**, w sekcji **API Keys** wklej darmowy klucz Groq z "
+    "[console.groq.com/keys](https://console.groq.com/keys) i kliknij **Test**.\n\n"
     "Tyle. Wracaj tu kiedy chcesz — VoiceFlow czeka w tle."
 )
 if IS_MAC:
-    WELCOME_BODY = WELCOME_BODY.replace("Prawy Alt", "Prawy Option")
+    WELCOME_BODY = (
+        WELCOME_BODY
+        .replace("Prawy Alt", "Prawy Option")
+        .replace("prawy Alt", "prawy Option")
+    )
 WELCOME_VIDEO_URL = ""  # uzupelnij linkiem Loom, gdy powstanie walkthrough
 
 
@@ -112,7 +118,11 @@ class WhatsNewDialog(QDialog):
             )
             lay.addWidget(self._gif_label, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-            self._gif_worker = _GifWorker(video_url, self)
+            # No Qt parent: a QThread parented to this dialog would be force-deleted
+            # mid-run if it's closed (or the app quits) before the fetch finishes
+            # ("QThread: Destroyed while thread is still running" — a fatal abort).
+            # self._gif_worker keeps it alive.
+            self._gif_worker = _GifWorker(video_url)
             self._gif_worker.loaded.connect(self._on_gif_loaded)
             self._gif_worker.start()
 

@@ -29,7 +29,7 @@ class GroqClient(BaseAIClient):
         self,
         api_key: str,
         stt_model: str = "whisper-large-v3-turbo",
-        ai_model: str = "llama-3.3-70b-versatile",
+        ai_model: str = "openai/gpt-oss-120b",
     ):
         self.api_key = api_key
         self.stt_model = stt_model
@@ -157,6 +157,6 @@ class GroqClient(BaseAIClient):
         stt = [m for m in model_ids if "whisper" in m.lower()]
         # guard/embed/moderation models are unusable for chat/assistant output —
         # reasoning models (deepseek/qwq) stay listed; auto-select alone excludes them.
-        not_chat = ("whisper", "tts", "guard", "embed", "moderation")
+        not_chat = ("whisper", "tts", "guard", "embed", "moderation", "orpheus")
         chat = [m for m in model_ids if not any(bad in m.lower() for bad in not_chat)]
         return stt, chat

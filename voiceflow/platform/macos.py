@@ -1,11 +1,12 @@
 # Only ever selected on darwin, but macOS-only modules are imported inside the functions
-# (ApplicationServices and IOKit are loaded via ctypes, fcntl via import) so this file still
+# (ApplicationServices and IOKit are loaded via ctypes, fcntl and AppKit via import) so this file still
 # imports and can be tested on Windows.
 import logging
 import os
 import plistlib
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
@@ -22,6 +23,17 @@ _APP_SERVICES = "/System/Library/Frameworks/ApplicationServices.framework/Applic
 _IOKIT = "/System/Library/Frameworks/IOKit.framework/IOKit"
 _IOHID_REQUEST_TYPE_LISTEN_EVENT = 1
 _IOHID_ACCESS_TYPE_GRANTED = 0
+_RESTORE_WAIT_S = 0.15
+_RESTORE_POLL_S = 0.01
+
+_target_app = None
+
+
+def prepare_qt_env() -> None:
+    # Qt's QCocoaWindow::raise() also calls [NSApp activateIgnoringOtherApps:YES] unless this
+    # is 0. That activates the whole menu-bar app (main window included) over the app the
+    # user is dictating into, so Cmd+V would land in VoiceFlow.
+    os.environ.setdefault("QT_MAC_SET_RAISE_PROCESS", "0")
 
 
 def data_dir() -> Path:
@@ -106,6 +118,63 @@ def open_folder(path) -> None:
 def paste_modifier():
     from pynput.keyboard import Key
     return Key.cmd
+
+
+def remember_target_app() -> None:
+    global _target_app
+    _target_app = None
+    try:
+        from AppKit import NSWorkspace
+
+        app = NSWorkspace.sharedWorkspace().frontmostApplication()
+        if app is not None and app.processIdentifier() != os.getpid():
+            _target_app = app
+    except Exception as e:
+        _log.info("Could not read the frontmost app before recording: %s", e)
+
+
+def restore_target_app() -> None:
+    target = _target_app
+    if target is None:
+        return
+    try:
+        from AppKit import NSApplication, NSApplicationActivateIgnoringOtherApps, NSWorkspace
+
+        workspace = NSWorkspace.sharedWorkspace()
+        front = workspace.frontmostApplication()
+        # Only undo VoiceFlow taking the front; an app the user switched to on purpose
+        # while the text was processing keeps the paste, as on Windows.
+        if target.isTerminated() or (front is not None and front.processIdentifier() != os.getpid()):
+            return
+        _log.info(
+            "Re-activating %s before paste (frontmost was %s)",
+            target.localizedName(), "VoiceFlow" if front is not None else "none",
+        )
+        app = NSApplication.sharedApplication()
+        if app.respondsToSelector_("yieldActivationToApplication:"):
+            app.yieldActivationToApplication_(target)
+        target.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+        # frontmostApplication may only refresh on the next run-loop turn, so this can run
+        # out: it then is just a bounded pause that lets the activation land before Cmd+V.
+        deadline = time.monotonic() + _RESTORE_WAIT_S
+        while time.monotonic() < deadline:
+            time.sleep(_RESTORE_POLL_S)
+            front = workspace.frontmostApplication()
+            if front is not None and front.processIdentifier() == target.processIdentifier():
+                return
+    except Exception as e:
+        _log.info("Could not re-activate the target app before paste: %s", e)
+
+
+def bring_app_to_front() -> None:
+    # QT_MAC_SET_RAISE_PROCESS=0 stops raise() from activating the app, so a window the user
+    # explicitly asked for would open without keyboard focus.
+    try:
+        from AppKit import NSApplication
+
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+    except Exception as e:
+        _log.info("Could not activate VoiceFlow: %s", e)
 
 
 def apply_window_shadow(win_id: int) -> None:

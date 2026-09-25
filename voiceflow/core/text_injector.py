@@ -10,7 +10,7 @@ from PyQt6.QtGui import QClipboard
 from PyQt6.QtWidgets import QApplication
 from pynput.keyboard import Controller
 
-from voiceflow.platform import PASTE_DELAY_S, paste_modifier
+from voiceflow.platform import PASTE_DELAY_S, paste_modifier, restore_target_app
 
 
 class TextInjector:
@@ -38,6 +38,7 @@ class TextInjector:
         clipboard.setText(text)
         if PASTE_DELAY_S:
             time.sleep(PASTE_DELAY_S)
+        restore_target_app()
 
         self._keyboard.press(self._paste_modifier)
         self._keyboard.press("v")

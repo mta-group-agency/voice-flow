@@ -21,6 +21,7 @@ from voiceflow.core.audio_recorder import AudioRecorder
 from voiceflow.core.hotkey_manager import HotkeyManager
 from voiceflow.core import logger
 from voiceflow.core.text_injector import TextInjector
+from voiceflow.platform import remember_target_app
 from voiceflow.storage.history_db import HistoryDB, TranscriptionEntry
 
 if TYPE_CHECKING:
@@ -180,6 +181,9 @@ class Pipeline(QObject):
         self.cancel(timed_out=True)
 
     def _set_state(self, state: State):
+        if state == State.RECORDING:
+            # Before state_changed, so the overlay it shows can never be what gets remembered.
+            remember_target_app()
         self._state = state
         self.state_changed.emit(state)
         if state == State.RECORDING:
@@ -379,7 +383,8 @@ class Pipeline(QObject):
             if stt is None:
                 self._set_state(State.IDLE)
                 self._emit_error(
-                    "No API key configured for speech-to-text. Add one in Settings → API Keys.",
+                    "No API key configured for speech-to-text. Add one in Settings → API Keys "
+                    "and click Save Settings.",
                     "No STT API key configured (configured_provider=%s)", self._settings.config.stt_provider,
                 )
                 return
@@ -435,7 +440,7 @@ class Pipeline(QObject):
             # skipped the cleanup (local Whisper needs no key, post-processing does).
             self._emit_error(
                 "Pasted without AI cleanup — no API key for text processing. "
-                "Add one in Settings → API Keys.",
+                "Add one in Settings → API Keys and click Save Settings.",
                 "No AI provider key for post-processing (configured=%s)", cfg.ai_model_provider,
             )
             self._on_ai_done(raw_text=raw_text, final_text=text, cost=stt_cost)
@@ -497,8 +502,9 @@ class Pipeline(QObject):
             if not provider_keys.get(provider):
                 self._set_state(State.IDLE)
                 self._emit_error(
-                    f"No API key for {provider.capitalize()}. Add it in Settings → API Keys, "
-                    "or pick a provider you have a key for in Settings → AI Assistant.",
+                    f"No API key for {provider.capitalize()}. Add it in Settings → API Keys "
+                    "and click Save Settings, or pick a provider you have a key for in "
+                    "Settings → AI Assistant.",
                     "No API key for configured assistant provider %s", provider,
                 )
                 return
@@ -509,7 +515,8 @@ class Pipeline(QObject):
             if provider is None:
                 self._set_state(State.IDLE)
                 self._emit_error(
-                    "No API key configured. Add one in Settings → API Keys.",
+                    "No API key configured. Add one in Settings → API Keys "
+                    "and click Save Settings.",
                     "No API key configured for assistant (fallback exhausted)",
                 )
                 return

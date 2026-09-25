@@ -30,7 +30,8 @@ uruchamiał na prawdziwym Macu, więc może coś nie zadziałać, o to właśnie
 
 1. Wejdź na console.groq.com/keys, załóż konto/zaloguj się, utwórz klucz API.
 2. W oknie VoiceFlow: zakładka **Settings** > sekcja **API Keys** > pole **Groq API Key**, wklej
-   klucz, kliknij **Save Settings** (na dole zakładki).
+   klucz i kliknij **Test** obok pola. Po udanym teście klucz zapisuje się sam, Save Settings
+   nie jest do tego potrzebny.
 
 ## 3. Uprawnienia
 

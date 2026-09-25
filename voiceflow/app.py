@@ -34,6 +34,18 @@ _HEALED_FIELD_FEATURES = {
     "assistant_groq_model": "AI Assistant",
 }
 
+# Config field -> the provider that owns it, so the static-migration startup toast
+# (see VoiceFlowApp.__init__) can be suppressed per-field instead of all-or-nothing:
+# a field is silenced there only when ITS provider has a key, because only then will
+# live model discovery run for it and issue its own (better-worded) toast.
+_MIGRATION_FIELD_PROVIDER = {
+    "stt_model": "gemini",
+    "gemini_ai_model": "gemini",
+    "assistant_gemini_model": "gemini",
+    "groq_ai_model": "groq",
+    "assistant_groq_model": "groq",
+}
+
 
 def _heal_feature_name(field: str) -> str:
     return _HEALED_FIELD_FEATURES.get(field, field)
@@ -94,12 +106,18 @@ class VoiceFlowApp:
         self._overlay = RecordingOverlay()
         self._tray = TrayManager(qt_app, self._window, self._pipeline)
 
-        # The static migration table only ever covers Gemini fields and is a blind,
-        # offline fallback. When the Gemini key is present, the live model-discovery
-        # notification below is authoritative — sending both would double-toast the
-        # same startup.
-        if self._settings.last_migrations and not cfg.gemini_api_key:
-            pairs = sorted({(old, new) for _, old, new in self._settings.last_migrations})
+        # The static migration table is a blind, offline fallback covering both Gemini
+        # and Groq fields. For a field whose provider has a key at startup, the live
+        # model-discovery notification below is authoritative — sending both would
+        # double-toast the same startup. Only a field whose provider has NO key (so
+        # live discovery never runs for it) needs this static fallback to speak up.
+        provider_keys = {"gemini": cfg.gemini_api_key, "groq": cfg.groq_api_key}
+        unkeyed_migrations = [
+            (field, old, new) for field, old, new in self._settings.last_migrations
+            if not provider_keys.get(_MIGRATION_FIELD_PROVIDER.get(field, ""), "")
+        ]
+        if unkeyed_migrations:
+            pairs = sorted({(old, new) for _, old, new in unkeyed_migrations})
             changes = ", ".join(f'"{old}" -> "{new}"' for old, new in pairs)
             self._tray.notify(
                 "VoiceFlow — AI model updated",
@@ -129,6 +147,11 @@ class VoiceFlowApp:
         )
         self._model_worker.provider_models_ready.connect(self._on_models_discovered)
         self._model_worker.start()
+
+        # Keeps a live reference to each in-flight re-discovery worker started below —
+        # a QThread with no Python owner can be garbage-collected mid-run and crash.
+        self._resave_workers: set[ModelDiscoveryWorker] = set()
+        self._window.provider_keys_changed.connect(self._on_provider_keys_changed)
 
     def _on_state_changed(self, state: State):
         if state == State.RECORDING:
@@ -214,6 +237,22 @@ class VoiceFlowApp:
         self._window.apply_discovered_models(
             provider, payload, healed={field: old for field, old, new in healed}
         )
+
+    def _on_provider_keys_changed(self, providers: list[str]):
+        """Save Settings just persisted a new/changed key for one or more providers —
+        re-run discovery for exactly those (reusing ModelDiscoveryWorker/_on_models_discovered,
+        the same heal + repopulate + notify path startup uses) so a dead default model
+        gets healed right away instead of waiting for the next app launch."""
+        cfg = self._settings.config
+        worker = ModelDiscoveryWorker(
+            cfg.gemini_api_key if "gemini" in providers else "",
+            cfg.claude_api_key if "claude" in providers else "",
+            cfg.groq_api_key if "groq" in providers else "",
+        )
+        worker.provider_models_ready.connect(self._on_models_discovered)
+        worker.finished.connect(lambda: self._resave_workers.discard(worker))
+        self._resave_workers.add(worker)
+        worker.start()
 
     def _on_theme_changed(self, new_theme: str):
         vf_theme.set_active(new_theme)

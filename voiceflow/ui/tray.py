@@ -8,6 +8,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
 from voiceflow.core.pipeline import State
+from voiceflow.platform import bring_app_to_front
 
 _ASSETS = Path(__file__).parent.parent.parent / "assets" / "common"
 _MAX_NOTIFY_CHARS = 250
@@ -62,6 +63,7 @@ class TrayManager:
         self._main_window.show()
         self._main_window.raise_()
         self._main_window.activateWindow()
+        bring_app_to_front()
 
     def _on_activated(self, reason):
         # macOS pops the context menu on any click when one is set (including Trigger), so

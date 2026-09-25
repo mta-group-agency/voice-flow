@@ -25,16 +25,16 @@ class AppConfig:
     turso_auth_token: str = ""
 
     # STT provider + models
-    stt_provider: str = "gemini"              # "gemini" | "groq" | "local"
+    stt_provider: str = "groq"                # "gemini" | "groq" | "local"
     stt_model: str = "gemini-2.5-flash"       # Gemini STT model
     groq_stt_model: str = "whisper-large-v3-turbo"
     local_whisper_model: str = "small"        # "tiny"|"small"|"medium"|"large-v3"
 
     # AI text processing
-    ai_model_provider: str = "gemini"         # "gemini" | "claude" | "groq"
+    ai_model_provider: str = "groq"           # "gemini" | "claude" | "groq"
     gemini_ai_model: str = "gemini-2.5-flash"
     claude_ai_model: str = "claude-sonnet-5"
-    groq_ai_model: str = "llama-3.3-70b-versatile"
+    groq_ai_model: str = "openai/gpt-oss-120b"
 
     # Hotkey (pynput key string)
     hotkey: str = "Key.alt_r"
@@ -45,7 +45,7 @@ class AppConfig:
     assistant_model_provider: str = ""   # "" = use ai_model_provider; else "gemini"|"claude"|"groq"
     assistant_gemini_model: str = "gemini-2.5-flash"
     assistant_claude_model: str = "claude-sonnet-5"
-    assistant_groq_model: str = "llama-3.3-70b-versatile"
+    assistant_groq_model: str = "openai/gpt-oss-120b"
     assistant_prompt: str = (
         "Jesteś asystentem piszącym po polsku. Wykonaj polecenie użytkownika i zwróć "
         "WYŁĄCZNIE gotowy tekst do wklejenia — bez wstępów, komentarzy, wyjaśnień ani "
@@ -58,7 +58,10 @@ class AppConfig:
     sample_rate: int = 16000
 
     # AI feature toggles
-    ai_processing_enabled: bool = True
+    # Off by default: a fresh install should dictate with plain Whisper immediately
+    # on a Groq key alone, no second (AI text) key required. See SettingsManager's
+    # _LEGACY_DEFAULTS for why an existing config.json is unaffected by this.
+    ai_processing_enabled: bool = False
     ai_custom_prompt: str = ""
     remove_fillers: bool = True
     fix_grammar: bool = True

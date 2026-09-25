@@ -10,6 +10,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from voiceflow.api.claude_client import ClaudeClient
 from voiceflow.api.gemini_client import GeminiClient
 from voiceflow.api.groq_client import GroqClient
+from voiceflow.config import model_healing
 
 
 class ModelDiscoveryWorker(QThread):
@@ -35,3 +36,39 @@ class ModelDiscoveryWorker(QThread):
             if all_ids:
                 stt, chat = GroqClient.split_stt_and_chat(all_ids)
                 self.provider_models_ready.emit("groq", {"stt": stt, "chat": chat})
+
+
+# provider -> the attribute each client uses for its chat/assistant model. Claude's
+# client predates the others and kept the shorter name.
+_MODEL_ATTR = {"gemini": "ai_model", "groq": "ai_model", "claude": "model"}
+
+
+class ConnectionTestWorker(QThread):
+    """Runs a Settings "Test" click off the GUI thread — list_models() + test_connection()
+    are both real HTTP round trips that used to block the window for seconds.
+
+    Fetching the live model list first both validates the key and, if the configured
+    chat model has since been discontinued, gives model_healing enough to retest with
+    a working replacement instead of just reporting the dead model as a failure.
+    """
+
+    finished_test = pyqtSignal(str, bool, list)  # provider, ok, live_chat_models
+
+    def __init__(self, provider: str, client, parent=None):
+        super().__init__(parent)
+        self._provider = provider
+        self._client = client
+
+    def run(self):
+        attr = _MODEL_ATTR[self._provider]
+        all_ids = self._client.list_models()
+        chat_models = GroqClient.split_stt_and_chat(all_ids)[1] if self._provider == "groq" else all_ids
+
+        configured_model = getattr(self._client, attr)
+        if chat_models and configured_model not in chat_models:
+            replacement = model_healing.pick_replacement(chat_models, self._provider, "chat")
+            if replacement:
+                setattr(self._client, attr, replacement)
+
+        ok = self._client.test_connection()
+        self.finished_test.emit(self._provider, ok, chat_models)

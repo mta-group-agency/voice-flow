@@ -11,7 +11,8 @@ from voiceflow.__version__ import __version__
 from voiceflow.app import VoiceFlowApp
 from voiceflow.config.settings_manager import SettingsManager
 from voiceflow.platform import (
-    DATA_DIR_DISPLAY, IS_MAC, ensure_single_instance, show_startup_permission_hint,
+    DATA_DIR_DISPLAY, IS_MAC, ensure_single_instance, prepare_qt_env,
+    show_startup_permission_hint,
 )
 
 _STT_MODEL_FIELD = {"gemini": "stt_model", "groq": "groq_stt_model", "local": "local_whisper_model"}
@@ -57,6 +58,8 @@ def _log_active_providers(log, cfg) -> None:
 
 
 def main():
+    # Before any QApplication, including the one ensure_single_instance may create on macOS.
+    prepare_qt_env()
     _instance_lock = ensure_single_instance()
 
     log_file = logger.setup()

@@ -128,7 +128,10 @@ class UpdateBanner(QFrame):
         self._progress.setValue(0)
         self._progress.show()
 
-        self._worker = UpdateDownloadWorker(self._info, self)
+        # No Qt parent: a QThread parented to this widget would be force-deleted
+        # mid-run if the app quits during the download ("QThread: Destroyed while
+        # thread is still running" — a fatal abort). self._worker keeps it alive.
+        self._worker = UpdateDownloadWorker(self._info)
         self._worker.progress.connect(self._progress.setValue)
         self._worker.finished_ok.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)

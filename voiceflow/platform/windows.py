@@ -12,6 +12,10 @@ _REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _APP_NAME = "VoiceFlow"
 
 
+def prepare_qt_env() -> None:
+    pass
+
+
 def data_dir() -> Path:
     return Path(os.environ.get("APPDATA", Path.home())) / "VoiceFlow"
 
@@ -71,6 +75,18 @@ def open_folder(path) -> None:
 def paste_modifier():
     from pynput.keyboard import Key
     return Key.ctrl
+
+
+def remember_target_app() -> None:
+    pass
+
+
+def restore_target_app() -> None:
+    pass
+
+
+def bring_app_to_front() -> None:
+    pass
 
 
 class _MARGINS(Structure):

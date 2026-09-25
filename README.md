@@ -24,8 +24,9 @@ Dalej: [Co gdzie leży](#co-gdzie-leży), [macOS](#macos).
    Więcej informacji > Uruchom mimo to.
 4. Okno powitalne jest po polsku, zamknij je przyciskiem Zaczynam. Dalej interfejs jest po angielsku.
 5. Klucz API: zakładka Settings > sekcja API Keys > pole Groq API Key. Wklej darmowy klucz z
-   https://console.groq.com/keys, kliknij Test obok (ma się pokazać "Connection successful!"),
-   na dole kliknij Save Settings. Sam klucz Groq wystarcza do wszystkiego.
+   https://console.groq.com/keys, kliknij Test obok. Po udanym teście klucz zapisuje się sam
+   (pokaże się "Connection successful! Key saved, you can dictate now."), Save Settings na dole
+   nie jest do tego potrzebny. Sam klucz Groq wystarcza do wszystkiego.
 6. Dyktowanie: kliknij tam, gdzie chcesz pisać, przytrzymaj prawy Alt, mów, puść. Tekst wklei się sam.
 
 ### Na co dzień

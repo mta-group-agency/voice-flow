@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 
+from PyQt6 import sip
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
@@ -13,9 +14,11 @@ from voiceflow.api.claude_client import ClaudeClient
 from voiceflow.api.gemini_client import GeminiClient
 from voiceflow.api.groq_client import GroqClient
 from voiceflow.api.local_whisper_client import LocalWhisperClient, MODEL_INFO
+from voiceflow.config import model_healing
 from voiceflow.config.schema import AppConfig
 from voiceflow.core import autostart
 from voiceflow.platform import IS_MAC, open_folder
+from voiceflow.ui.model_discovery import ConnectionTestWorker
 from voiceflow.ui.widgets.hotkey_capture import HotkeyCaptureWidget
 from voiceflow.ui.widgets.toggle_switch import ToggleSwitch
 
@@ -23,6 +26,13 @@ from voiceflow.ui.widgets.toggle_switch import ToggleSwitch
 class SettingsTab(QWidget):
     theme_requested = pyqtSignal(str)
     settings_saved = pyqtSignal()
+    # Providers whose API key Save Settings just added or changed, e.g. ["groq"] —
+    # lets VoiceFlowApp re-run model discovery for exactly those instead of the user
+    # having to wait for the next app launch to heal a dead default model.
+    provider_keys_changed = pyqtSignal(list)
+    # A successful Test saved a key and/or healed a retired model without Save Settings,
+    # so settings_saved never fires for it.
+    test_config_changed = pyqtSignal()
 
     def __init__(self, settings, pipeline, parent=None):
         super().__init__(parent)
@@ -42,6 +52,13 @@ class SettingsTab(QWidget):
         # cfg instead (see its STT/AI processing sections) and this flag keeps the realign
         # methods from acting on that half-loaded, misleading snapshot in between.
         self._loading = False
+        # Keeps each in-flight ConnectionTestWorker alive (a QThread with no Python
+        # owner can be garbage-collected mid-run) and lets a second Test click on the
+        # same provider replace rather than stack with the first.
+        self._test_workers: dict[str, ConnectionTestWorker] = {}
+        # Workers a same-provider re-click already displaced from _test_workers above,
+        # kept alive here until each reports its own finished — see _run_test.
+        self._retiring_test_workers: set[ConnectionTestWorker] = set()
         self._build_ui()
         self._load_values()
 
@@ -176,8 +193,8 @@ class SettingsTab(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel("Provider:"))
         self._stt_provider_combo = QComboBox()
-        self._stt_provider_combo.addItem("Gemini (default)", "gemini")
-        self._stt_provider_combo.addItem("Groq — Whisper (~10× faster)", "groq")
+        self._stt_provider_combo.addItem("Gemini", "gemini")
+        self._stt_provider_combo.addItem("Groq (recommended) — Whisper (~10× faster)", "groq")
         self._stt_provider_combo.addItem(
             "Local — faster-whisper" if IS_MAC else "Local — faster-whisper (NVIDIA GPU)", "local"
         )
@@ -342,9 +359,8 @@ class SettingsTab(QWidget):
         self._groq_ai_model = QComboBox()
         self._groq_ai_model.setEditable(False)
         self._groq_ai_model.addItems([
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
         ])
         fgr.addRow("Groq model:", self._groq_ai_model)
         body_vbox.addWidget(self._ai_groq_widget)
@@ -499,9 +515,8 @@ class SettingsTab(QWidget):
         self._assistant_groq_model = QComboBox()
         self._assistant_groq_model.setEditable(False)
         self._assistant_groq_model.addItems([
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
         ])
         fagr.addRow("Groq model:", self._assistant_groq_model)
         vbox.addWidget(self._assistant_groq_widget)
@@ -1178,6 +1193,14 @@ class SettingsTab(QWidget):
     def _save(self):
         s = self._settings
 
+        # Snapshot before any s.set() below mutates them — the diff drives
+        # provider_keys_changed (see the end of this method).
+        old_keys = {
+            "gemini": s.config.gemini_api_key,
+            "groq": s.config.groq_api_key,
+            "claude": s.config.claude_api_key,
+        }
+
         # Hotkey
         s.set("hotkey", self._hotkey_widget.current_key())
         s.set("hotkey_assistant", self._hotkey_assistant_widget.current_key())
@@ -1248,41 +1271,162 @@ class SettingsTab(QWidget):
         s.set("tone_adjustment_enabled", self._toggle_tone.isChecked())
         s.set("tone_adjustment_value",   self._tone_value.currentText().lower())
 
+        new_keys = {
+            "gemini": self._gemini_key.text().strip(),
+            "groq": self._groq_key.text().strip(),
+            "claude": self._claude_key.text().strip(),
+        }
+        changed_providers = [
+            p for p in ("gemini", "groq", "claude")
+            if new_keys[p] and new_keys[p] != old_keys[p]
+        ]
+        if changed_providers:
+            self.provider_keys_changed.emit(changed_providers)
+
         self._pipeline.reconfigure()
         self.settings_saved.emit()
         self._saved_lbl.setVisible(True)
         self._save_timer.start(3000)
 
     # ── API connection tests ──────────────────────────────────────────────────
+    # Off the GUI thread (ConnectionTestWorker): list_models()+test_connection() are
+    # real HTTP round trips that used to freeze the window for seconds. The worker also
+    # retries a discontinued configured model against a healed replacement before
+    # reporting failure — see ConnectionTestWorker's docstring.
 
     def _test_gemini(self):
-        from PyQt6.QtWidgets import QMessageBox
-        ok = GeminiClient(
-            self._gemini_key.text().strip(),
+        key = self._gemini_key.text().strip()
+        self._run_test("gemini", GeminiClient(
+            key,
             self._stt_model.currentText(),
             self._gemini_ai_model.currentText(),
-        ).test_connection()
-        QMessageBox.information(self, "Gemini", "Connection successful!") if ok else \
-        QMessageBox.warning(self, "Gemini", "Connection failed. Check your API key.")
+        ), self.sender(), key)
 
     def _test_claude(self):
-        from PyQt6.QtWidgets import QMessageBox
-        ok = ClaudeClient(
-            self._claude_key.text().strip(),
+        key = self._claude_key.text().strip()
+        self._run_test("claude", ClaudeClient(
+            key,
             self._claude_ai_model.currentText(),
-        ).test_connection()
-        QMessageBox.information(self, "Claude", "Connection successful!") if ok else \
-        QMessageBox.warning(self, "Claude", "Connection failed. Check your API key.")
+        ), self.sender(), key)
 
     def _test_groq(self):
-        from PyQt6.QtWidgets import QMessageBox
-        ok = GroqClient(
-            self._groq_key.text().strip(),
+        key = self._groq_key.text().strip()
+        self._run_test("groq", GroqClient(
+            key,
             self._groq_stt_model.currentText(),
             self._groq_ai_model.currentText(),
-        ).test_connection()
-        QMessageBox.information(self, "Groq", "Connection successful!") if ok else \
-        QMessageBox.warning(self, "Groq", "Connection failed. Check your API key.")
+        ), self.sender(), key)
+
+    def _run_test(self, provider: str, client, btn, tested_key: str):
+        if isinstance(btn, QPushButton):
+            btn.setEnabled(False)
+            # Not "Testing…" — clips at the button's fixed 60px width (see _key_row).
+            btn.setText("…")
+        # No Qt parent: a QThread parented to this widget would be force-deleted
+        # mid-run if the app quits while the request is in flight ("QThread:
+        # Destroyed while thread is still running" — a fatal abort). Kept alive
+        # instead via _test_workers below, same as app.py's _resave_workers.
+        worker = ConnectionTestWorker(provider, client)
+        worker.finished_test.connect(
+            lambda p, ok, models: self._on_test_finished(p, ok, models, btn, tested_key)
+        )
+        # QThread.finished (not our own finished_test) fires only once run() has
+        # actually returned — the safe point to drop the last Python reference.
+        worker.finished.connect(lambda: self._on_test_worker_finished(provider, worker))
+        prior = self._test_workers.get(provider)
+        if prior is not None:
+            # A second click on the same provider while the first is still in
+            # flight: _test_workers is about to point at the new worker, but the
+            # old one (parentless, same as this one) is still running — dropping
+            # its last Python reference here would GC-crash it mid-run. Keep it
+            # alive until it reports its own finished.
+            self._retiring_test_workers.add(prior)
+        self._test_workers[provider] = worker
+        worker.start()
+
+    def _on_test_worker_finished(self, provider: str, worker: ConnectionTestWorker):
+        self._retiring_test_workers.discard(worker)
+        if self._test_workers.get(provider) is worker:
+            self._test_workers.pop(provider, None)
+
+    def _discovery_payload(self, provider: str, chat_models: list[str]):
+        # Mirrors the shape ModelDiscoveryWorker emits per provider — apply_discovered_models
+        # already knows how to consume it. Test only ever fetches the chat/assistant list
+        # (that's what the API Keys "Test" button exercises), so groq's "stt" bucket is left
+        # empty; _repopulate_combo no-ops on an empty list rather than clearing that combo.
+        if provider == "groq":
+            return {"stt": [], "chat": chat_models}
+        return chat_models
+
+    def _persist_tested_key(self, provider: str, key: str) -> bool:
+        """Called only after a successful Test. Saves just this provider's key field
+        (never the rest of the form — the user hasn't clicked Save Settings) and
+        replays the same apply steps _save() runs for a changed key: pipeline
+        reconfigure and provider_keys_changed, so discovery/heal runs immediately
+        instead of waiting for the next Save Settings or app launch."""
+        field = {"gemini": "gemini_api_key", "groq": "groq_api_key", "claude": "claude_api_key"}[provider]
+        if getattr(self._settings.config, field) == key:
+            return False
+        self._settings.set(field, key)
+        self._pipeline.reconfigure()
+        self.provider_keys_changed.emit([provider])
+        return True
+
+    def _on_test_finished(self, provider: str, ok: bool, chat_models: list[str], btn, tested_key: str):
+        from PyQt6.QtWidgets import QMessageBox
+        # The worker has no Qt parent (see _run_test), so it can outlive this widget
+        # during shutdown; guard against firing into an already-deleted SettingsTab/btn.
+        if sip.isdeleted(self):
+            return
+        if isinstance(btn, QPushButton) and not sip.isdeleted(btn):
+            btn.setEnabled(True)
+            btn.setText("Test")
+        label = self._PROVIDER_LABELS.get(provider, provider.capitalize())
+
+        if not ok:
+            QMessageBox.warning(self, label, "Connection failed. Check your API key.")
+            return
+
+        # Heal before persisting the key: _persist_tested_key starts a background
+        # re-discovery, which must see the already-healed model.
+        healed = model_healing.heal_config(self._settings.config, provider, "chat", chat_models) if chat_models else []
+        if healed:
+            for field, old, new in healed:
+                self._settings.set(field, new)
+            self.apply_discovered_models(
+                provider, self._discovery_payload(provider, chat_models),
+                healed={field: old for field, old, new in healed},
+            )
+            old, new = healed[0][1], healed[0][2]
+            healed_sentence = f'The model "{old}" is no longer available, switched to "{new}".'
+        else:
+            healed_sentence = None
+
+        # Persist the key that was actually tested, and only if the field still holds
+        # it (stripped) — if the user edited or cleared the field while the Test was
+        # in flight, that untested value must never overwrite a working saved key.
+        key_field = {"gemini": self._gemini_key, "groq": self._groq_key, "claude": self._claude_key}[provider]
+        key_saved = bool(tested_key) and key_field.text().strip() == tested_key \
+            and self._persist_tested_key(provider, tested_key)
+
+        if healed or key_saved:
+            self.test_config_changed.emit()
+
+        if key_saved:
+            # A Claude key alone can't transcribe (no STT support here) — only Groq
+            # and Gemini can dictate, so only they get the "you can dictate now" promise.
+            message = (
+                "Connection successful! Key saved."
+                if provider == "claude" else
+                "Connection successful! Key saved, you can dictate now."
+            )
+            if healed_sentence:
+                message += f" {healed_sentence}"
+        elif healed_sentence:
+            message = f"Connection successful. {healed_sentence}"
+        else:
+            message = "Connection successful!"
+        QMessageBox.information(self, label, message)
 
     def _test_turso(self):
         from PyQt6.QtWidgets import QMessageBox

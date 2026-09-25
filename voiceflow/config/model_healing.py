@@ -6,7 +6,7 @@ import re
 # Modele rozumujące (distill/r1/qwq/...) zostają widoczne w Settings — user może je
 # wybrać świadomie — ale nie są auto-wybierane, bo wklejają <think> do tekstu.
 _CHAT_EXCLUDE = (
-    "guard", "whisper", "tts", "embed", "moderation",
+    "guard", "whisper", "tts", "embed", "moderation", "orpheus",
     "distill", "-r1", "r1-", "reasoning", "thinking", "qwq",
 )
 

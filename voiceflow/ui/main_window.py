@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from voiceflow.__version__ import __version__
-from voiceflow.platform import apply_window_shadow
+from voiceflow.platform import apply_window_shadow, bring_app_to_front
 from voiceflow.ui import theme
 from voiceflow.ui.tabs.history_tab import HistoryTab
 from voiceflow.ui.tabs.home_tab import HomeTab
@@ -209,9 +209,7 @@ class _StatusBar(QWidget):
         sep = QLabel("·")
         sep.setObjectName("status_bar_text")
 
-        cfg = settings.config
-        model = cfg.claude_ai_model if cfg.ai_model_provider == "claude" else cfg.gemini_ai_model
-        self._model_pill = QLabel(model)
+        self._model_pill = QLabel()
         self._model_pill.setObjectName("status_bar_pill")
 
         lay.addWidget(self._dot)
@@ -221,6 +219,7 @@ class _StatusBar(QWidget):
         lay.addStretch()
         lay.addWidget(QSizeGrip(self))
 
+        self.refresh_model(settings.config)
         self._update_dot(theme.get_tokens()["success"])
 
     def set_state(self, text: str, state: str):
@@ -230,12 +229,24 @@ class _StatusBar(QWidget):
         self._update_dot(color)
 
     def refresh_model(self, cfg):
-        if cfg.ai_model_provider == "claude":
-            model = cfg.claude_ai_model
-        elif cfg.ai_model_provider == "groq":
-            model = cfg.groq_ai_model
+        # Shows whichever model actually runs on dictation: the AI text-processing
+        # model when that's on, otherwise the speech-to-text model itself — so a
+        # fresh install (ai_processing_enabled off by default) doesn't show a
+        # processing model that never runs.
+        if cfg.ai_processing_enabled:
+            if cfg.ai_model_provider == "claude":
+                model = cfg.claude_ai_model
+            elif cfg.ai_model_provider == "groq":
+                model = cfg.groq_ai_model
+            else:
+                model = cfg.gemini_ai_model
         else:
-            model = cfg.gemini_ai_model
+            if cfg.stt_provider == "groq":
+                model = cfg.groq_stt_model
+            elif cfg.stt_provider == "local":
+                model = cfg.local_whisper_model
+            else:
+                model = cfg.stt_model
         self._model_pill.setText(model)
 
     def _update_dot(self, color: str):
@@ -264,6 +275,7 @@ class _BorderOverlay(QWidget):
 
 class MainWindow(QMainWindow):
     theme_changed = pyqtSignal(str)
+    provider_keys_changed = pyqtSignal(list)
 
     def __init__(self, settings, db, pipeline):
         super().__init__()
@@ -315,6 +327,10 @@ class MainWindow(QMainWindow):
         self._settings_tab.settings_saved.connect(
             lambda: self._status_bar.refresh_model(settings.config)
         )
+        self._settings_tab.provider_keys_changed.connect(self.provider_keys_changed)
+        self._settings_tab.test_config_changed.connect(
+            lambda: self._status_bar.refresh_model(self._settings.config)
+        )
 
         pipeline.state_changed.connect(self._on_state_changed)
         pipeline.error_occurred.connect(self._on_error)
@@ -327,11 +343,14 @@ class MainWindow(QMainWindow):
 
     def apply_discovered_models(self, provider: str, payload, healed: dict[str, str] | None = None):
         self._settings_tab.apply_discovered_models(provider, payload, healed=healed)
+        if healed:
+            self._status_bar.refresh_model(self._settings.config)
 
     def trigger_update(self):
         self.show()
         self.raise_()
         self.activateWindow()
+        bring_app_to_front()
         self._update_banner.start_update_now()
 
     def connect_restart(self, slot):

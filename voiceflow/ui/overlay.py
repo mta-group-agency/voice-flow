@@ -9,6 +9,7 @@ from PyQt6.QtCore import QPoint, QPropertyAnimation, Qt, QTimer, pyqtProperty, p
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from voiceflow.platform import IS_MAC
 from voiceflow.ui import theme
 
 
@@ -188,8 +189,7 @@ class RecordingOverlay(QWidget):
         self._stop_btn.setVisible(False)
         self._timer_label.setVisible(True)
         self._tick.start()
-        self.show()
-        self.raise_()
+        self._show_on_top()
 
     def show_processing(self):
         self._processing = True
@@ -200,8 +200,14 @@ class RecordingOverlay(QWidget):
         self._timer_label.setText("")
         self._timer_label.setVisible(False)
         self._stop_btn.setVisible(True)
+        self._show_on_top()
+
+    def _show_on_top(self):
         self.show()
-        self.raise_()
+        # On macOS raise_() activates the whole app (QCocoaWindow::raise), taking focus from
+        # the app the text is pasted into; WindowStaysOnTopHint already keeps the bubble in front.
+        if not IS_MAC:
+            self.raise_()
 
     def hide_overlay(self):
         self._processing = False

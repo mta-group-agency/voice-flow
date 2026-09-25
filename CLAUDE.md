@@ -20,7 +20,7 @@
 - **STT** (wybór dostawcy): **Groq** (`whisper-large-v3-turbo`) — domyślny/rekomendowany
   tor (najszybszy, darmowy tier); **Gemini** (`gemini-2.5-flash`); **lokalny Whisper**
   (faster-whisper) — fallback offline, 0 zł, bez kluczy.
-- **AI post-processing** (wybór dostawcy): Groq (`llama-3.3-70b-versatile`) /
+- **AI post-processing** (wybór dostawcy): Groq (`openai/gpt-oss-120b`) /
   Gemini (`gemini-2.5-flash`) / Anthropic Claude (`claude-sonnet-5`).
 - **Baza danych**: Turso (libSQL, HTTP API) — opcjonalna (historia transkrypcji).
 - **Hotkey**: pynput (globalny nasłuch, domyślnie prawy Alt)

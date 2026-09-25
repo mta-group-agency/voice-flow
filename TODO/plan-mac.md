@@ -139,6 +139,14 @@ przepływu dyktowania, `.exe` się buduje. Gałęzie Maca sprawdzone tylko symul
   prompt (`AXIsProcessTrustedWithOptions`, dodaje VoiceFlow do listy w Ustawieniach), potem, jeśli
   dalej brakuje którejś zgody, własne okno z instrukcją i przyciskiem do właściwego panelu,
 - overlay nie bierze fokusu (też na Windowsie) i na Macu nie znika, gdy VoiceFlow nie jest aktywny,
+- poprawka po pierwszym teście na Macu (2026-09-25): przy trzymaniu prawego Option macOS przełączał
+  na okno VoiceFlow, więc Cmd+V trafiłby do VoiceFlow, a nie do pisanej aplikacji. Przyczyna:
+  `raise_()` overlayu, które w Qt na Macu aktywuje całą aplikację (`QCocoaWindow::raise` woła
+  `activateIgnoringOtherApps:`, sprawdzone w `libqcocoa.dylib` z builda CI, Qt 6.11.2). Naprawa:
+  `QT_MAC_SET_RAISE_PROCESS=0` ustawiane przed startem Qt, overlay na Macu bez `raise_()`, a dla
+  pewności VoiceFlow zapamiętuje aplikację z przodu na starcie nagrania i tuż przed Cmd+V przywraca
+  ją na przód, jeśli z przodu stoi VoiceFlow (czeka do 150 ms). „Open VoiceFlow" z paska menu
+  aktywuje aplikację jawnie, bo bez tego okno otwierałoby się bez fokusu. Windows bez zmian,
 - tray: na Macu klik na ikonie otwiera menu paska menu (jak w macOS, bez dwukliku), z niego
   "Open VoiceFlow" otwiera okno; etykiety klawiszy (Right Option, Cmd, Control), podpowiedzi w
   Ustawieniach, powitanie („Prawy Option") i czcionki (Helvetica Neue, Menlo) zależne od systemu,
@@ -175,12 +183,15 @@ na Macu albo w GitHub Actions (PyInstaller nie robi `.app` na Windowsie). Docelo
 - Wykonanie: Agent sonnet, błędy builda: `build-error-resolver`.
 
 ### F5. Test na żywym Macu (kolega)
+**Stan 2026-09-25: pierwszy test wykrył przełączanie na okno VoiceFlow przy nagrywaniu (opis
+i poprawka w F3), poprawione w kodzie, czeka na nowy build i ponowny test punktu 3.**
 Checklista do przekazania (bez tego nie wydajemy):
 1. pobranie zipa, odblokowanie w Gatekeeperze (macOS 14 i starsze: prawy klik > Otwórz;
    macOS 15 i nowsze: Ustawienia systemowe > Prywatność i ochrona > „Otwórz mimo to"),
    aplikacja startuje, ikona w pasku menu,
 2. prośba o mikrofon i uprawnienia klawiatury, po nadaniu prawy Option nagrywa,
-3. tekst wkleja się w Notatkach, Slacku, przeglądarce (Cmd+V, fokus zostaje),
+3. tekst wkleja się w Notatkach, Slacku, przeglądarce (Cmd+V, fokus zostaje; trzymanie prawego
+   Option nie przełącza na okno VoiceFlow),
 4. Esc anuluje, overlay widoczny także nad aplikacją pełnoekranową,
 5. drugie uruchomienie nie tworzy drugiej instancji, autostart po wylogowaniu,
 6. lokalny Whisper pobiera model i transkrybuje (CPU),
