@@ -26,6 +26,7 @@ DARK: dict[str, str] = {
     "danger":        "#E66A4C",
     "mode_dictation": "#2563EB",
     "mode_assistant": "#7C3AED",
+    "link":          "#EFC233",
 }
 
 LIGHT: dict[str, str] = {
@@ -49,6 +50,8 @@ LIGHT: dict[str, str] = {
     "danger":        "#C4422A",
     "mode_dictation": "#2563EB",
     "mode_assistant": "#7C3AED",
+    # accent_deep is only 2.18:1 on white; darkened further for AA text contrast (>=4.5:1).
+    "link":          "#7A5B12",
 }
 
 TOKENS: dict[str, dict[str, str]] = {"dark": DARK, "light": LIGHT}
@@ -67,6 +70,10 @@ def set_active(theme: str) -> None:
 
 def get_accent() -> str:
     return TOKENS[_active]["accent"]
+
+
+def get_link_color() -> str:
+    return TOKENS[_active]["link"]
 
 
 def get_tokens(theme: str | None = None) -> dict[str, str]:
@@ -397,6 +404,7 @@ QTextBrowser#dialog_body {{
 }}
 QLabel#gif_thumb {{
     background: {t['surface_1']}; border: 1px solid {t['hairline']}; border-radius: 10px;
+    color: {t['text_3']}; font-size: 12px;
 }}
 
 /* ── Misc ────────────────────────────────── */

@@ -9,9 +9,11 @@ from typing import Optional
 from PyQt6.QtCore import Qt, QPointF, QThread, QUrl, pyqtSignal
 from PyQt6.QtGui import (
     QBrush, QColor, QDesktopServices, QPainter, QPainterPath, QPen, QPixmap,
+    QTextCharFormat, QTextCursor,
 )
 from PyQt6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout,
+    QApplication, QDialog, QHBoxLayout, QLabel, QPushButton, QTextBrowser,
+    QVBoxLayout,
 )
 
 from voiceflow.platform import IS_MAC
@@ -19,8 +21,13 @@ from voiceflow.ui import theme
 
 _GIF_WIDTH = 432
 _GIF_HEIGHT = 220
+_GIF_MIN_HEIGHT = 110
 _BODY_MIN_HEIGHT = 160
+_BODY_FLOOR_HEIGHT = 100
 _BODY_MAX_HEIGHT = 480
+# Covers the native title bar (~31 px on Windows 11 at 100%) plus slack; the
+# dialog geometry Qt reports excludes the frame.
+_SCREEN_SAFETY_MARGIN = 48
 
 WELCOME_TITLE = "Witaj w VoiceFlow"
 WELCOME_BODY = (
@@ -45,6 +52,27 @@ if IS_MAC:
         .replace("prawy Alt", "prawy Option")
     )
 WELCOME_VIDEO_URL = ""  # uzupelnij linkiem Loom, gdy powstanie walkthrough
+
+
+def _apply_link_color(browser: QTextBrowser, color: str) -> None:
+    # setMarkdown() colors anchors from the application palette, ignoring
+    # document.setDefaultStyleSheet() — the char format has to be set directly.
+    fmt = QTextCharFormat()
+    fmt.setForeground(QColor(color))
+    cursor = QTextCursor(browser.document())
+    block = browser.document().begin()
+    while block.isValid():
+        it = block.begin()
+        while not it.atEnd():
+            fragment = it.fragment()
+            if fragment.isValid() and fragment.charFormat().isAnchor():
+                cursor.setPosition(fragment.position())
+                cursor.setPosition(
+                    fragment.position() + fragment.length(), QTextCursor.MoveMode.KeepAnchor
+                )
+                cursor.mergeCharFormat(fmt)
+            it += 1
+        block = block.next()
 
 
 class _ClickableLabel(QLabel):
@@ -105,16 +133,19 @@ class WhatsNewDialog(QDialog):
         title_lbl.setObjectName("dialog_title")
         title_lbl.setWordWrap(True)
         lay.addWidget(title_lbl)
+        self._title_lbl = title_lbl
+        self._video_btn: Optional[QPushButton] = None
 
         if video_url:
             self._gif_label = _ClickableLabel()
             self._gif_label.setObjectName("gif_thumb")
-            self._gif_label.setFixedWidth(_GIF_WIDTH)
-            self._gif_label.setFixedHeight(_GIF_HEIGHT)
+            self._gif_label.setFixedSize(_GIF_WIDTH, _GIF_HEIGHT)
             self._gif_label.setScaledContents(True)
             self._gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self._gif_label.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._gif_label.hide()
+            # Visible from the start so the dialog never grows (and pushes the
+            # buttons off-screen) when the thumbnail arrives after it is shown.
+            self._gif_label.setText("Ładowanie podglądu…")
             self._gif_label.clicked.connect(
                 lambda: QDesktopServices.openUrl(QUrl(video_url))
             )
@@ -126,25 +157,25 @@ class WhatsNewDialog(QDialog):
             # self._gif_worker keeps it alive.
             self._gif_worker = _GifWorker(video_url)
             self._gif_worker.loaded.connect(self._on_gif_loaded)
+            self._gif_worker.failed.connect(self._on_gif_failed)
             self._gif_worker.start()
 
         browser = QTextBrowser()
         browser.setObjectName("dialog_body")
-        accent = theme.get_accent()
-        browser.document().setDefaultStyleSheet(f"a {{ color: {accent}; }}")
         browser.setMarkdown(body)
+        _apply_link_color(browser, theme.get_link_color())
         browser.setOpenExternalLinks(True)
-        browser.setMinimumHeight(_BODY_MIN_HEIGHT)
+        browser.setMinimumHeight(_BODY_FLOOR_HEIGHT)
         browser.setMaximumHeight(_BODY_MAX_HEIGHT)
         lay.addWidget(browser)
         self._body_browser = browser
-        self._fit_body_height()
 
         if video_url:
             video_btn = QPushButton("▶ Obejrzyj pełne wideo")
             video_btn.setObjectName("ghost")
             video_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(video_url)))
             lay.addWidget(video_btn)
+            self._video_btn = video_btn
 
         row = QHBoxLayout()
         row.setSpacing(10)
@@ -171,15 +202,56 @@ class WhatsNewDialog(QDialog):
             row.addWidget(primary_btn)
 
         lay.addLayout(row)
+        self._button_row = row
+        self._fit_body_height()
 
     def showEvent(self, event):
-        super().showEvent(event)
+        # Fit and apply the final size before QDialog.showEvent positions the
+        # window: any growth after that extends downward, past the screen edge.
         self._fit_body_height()
+        self.layout().activate()
+        super().showEvent(event)
+
+    def _fit_title_height(self) -> int:
+        # A word-wrapped QLabel doesn't raise the window's minimum height to its
+        # wrapped text, so a long title got squeezed over the widgets below it.
+        margins = self.layout().contentsMargins()
+        width = self._title_lbl.width() if self.isVisible() else 0
+        if width <= 0:
+            width = max(self.minimumWidth(), self.layout().sizeHint().width())
+            width -= margins.left() + margins.right()
+        height = self._title_lbl.heightForWidth(width)
+        self._title_lbl.setMinimumHeight(height)
+        return height
+
+    def _max_body_height(self) -> int:
+        screen = self.screen() or QApplication.primaryScreen()
+        margins = self.layout().contentsMargins()
+        other = margins.top() + margins.bottom() + self._fit_title_height()
+        gaps = 2  # title-body, body-buttons
+
+        if self._video_url:
+            other += self._video_btn.sizeHint().height()
+            gaps += 2  # gif label and video button each add one more gap
+
+        other += self._button_row.sizeHint().height()
+        other += self.layout().spacing() * gaps
+        other += _SCREEN_SAFETY_MARGIN
+
+        free = screen.availableGeometry().height() - other if screen else 10_000
+
+        if self._gif_label is not None:
+            gif_height = max(_GIF_MIN_HEIGHT, min(_GIF_HEIGHT, free - _BODY_MIN_HEIGHT))
+            self._gif_label.setFixedSize(_GIF_WIDTH * gif_height // _GIF_HEIGHT, gif_height)
+            free -= gif_height
+
+        return max(_BODY_FLOOR_HEIGHT, min(_BODY_MAX_HEIGHT, free))
 
     def _fit_body_height(self):
         # QTextBrowser doesn't grow to its document by itself: without this the
         # welcome text (added as the "Jak zacząć" step grew) got clipped behind a
         # fixed max-height and needed scrolling to reach the Groq key step.
+        self.ensurePolished()
         browser = self._body_browser
         doc = browser.document()
         width = browser.viewport().width()
@@ -189,7 +261,8 @@ class WhatsNewDialog(QDialog):
         doc.setTextWidth(width)
         content_height = int(doc.size().height())
         chrome = 30  # QSS border (1px*2) + padding (10px top/bottom) + rounding slack
-        total = max(_BODY_MIN_HEIGHT, min(content_height + chrome, _BODY_MAX_HEIGHT))
+        max_height = self._max_body_height()
+        total = min(max(_BODY_MIN_HEIGHT, content_height + chrome), max_height)
         browser.setMinimumHeight(total)
         browser.setMaximumHeight(total)
 
@@ -222,7 +295,11 @@ class WhatsNewDialog(QDialog):
             return
         pm = QPixmap()
         if not pm.loadFromData(data):
+            self._on_gif_failed()
             return
         pm = self._with_play_overlay(pm)
         self._gif_label.setPixmap(pm)
-        self._gif_label.show()
+
+    def _on_gif_failed(self):
+        if self._gif_label is not None and self._gif_label.pixmap().isNull():
+            self._gif_label.setText("Podgląd niedostępny, kliknij, aby obejrzeć wideo")

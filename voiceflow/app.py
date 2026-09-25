@@ -94,6 +94,7 @@ class VoiceFlowApp:
         self._settings = settings or SettingsManager()
         cfg = self._settings.config
 
+        vf_theme.set_active(cfg.theme)
         qt_app.setStyleSheet(vf_theme.build_stylesheet(cfg.theme))
 
         self._db = HistoryDB(
