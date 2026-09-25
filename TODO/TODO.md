@@ -10,6 +10,16 @@
 ## Backlog
 > Pomysły i zadania na później. Bez kolejności — przenosisz do „Aktywnego fokusu", gdy wchodzą do realizacji.
 
+### Poprawki po teście na Macu (Anita, 2026-09-25)
+- [ ] Komunikat "No API key configured ... click Save Settings" (voiceflow/core/pipeline.py ok. 386
+  i 443) zmienić na "Add your Groq key in Settings → API Keys and click Test."; README linia ok. 47
+  tak samo ("kliknij Test").
+- [ ] Home po pierwszym starcie bez klucza: zamiast "Ready · press hotkey to dictate" pokazać
+  "Add a Groq key in Settings to start"; tekst "Database not configured..." zastąpić neutralnym
+  "History is off (optional)".
+- [ ] Okno "Nowa wersja": pusta odpowiedź serwera dla miniatury zostawia "Ładowanie podglądu…"
+  na stałe; tekst "Podgląd niedostępny" ucinany na bardzo małych ekranach (brak zawijania).
+
 ### Settings — drobiazgi z review v1.3.0
 - [ ] **Ostrzeżenie o braku klucza w sekcji Speech-to-Text.** Dwie sekcje AI mają już czerwony
   label pod wyborem providera, STT nie ma. Przy samym kluczu Claude STT zostaje na „Gemini"
