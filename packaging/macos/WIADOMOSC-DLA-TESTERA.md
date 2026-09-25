@@ -24,7 +24,7 @@ uruchamiał na prawdziwym Macu, więc może coś nie zadziałać, o to właśnie
      ```
      Potem uruchom VoiceFlow normalnie z Aplikacji.
 5. Przy pierwszym uruchomieniu pokaże się okno powitalne po polsku. Zamknij je przyciskiem
-   **"Zaczynam"**. Jeśli po około 30 sekundach nic się nie pokazało, przejdź do sekcji 5.
+   **"Zaczynam"**. Zaraz potem pokażą się okna o uprawnieniach (po angielsku, jedno od VoiceFlow i jedno od macOS). Co w nich kliknąć, opisuje sekcja 3; klucz z sekcji 2 możesz wkleić potem. Jeśli po około 30 sekundach nic się nie pokazało, przejdź do sekcji 5.
 
 ## 2. Klucz do Groq (do transkrypcji mowy)
 

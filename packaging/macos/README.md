@@ -118,6 +118,7 @@ rozpakowaniu i ponownym spakowaniu gubi uprawnienia wykonywalne pliku i linki sy
 `.app`, aplikacja u kolegi wtedy się nie otworzy. Wystarczy to jedno "Wyodrębnij wszystkie" z kroku
 2, żeby wyjąć wewnętrzny zip z zewnętrznego opakowania Actions; sam wewnętrzny zip zostaje
 nietknięty.
+Treść pliku WIADOMOSC-DLA-TESTERA.md skopiuj do Slacka razem z zipem (znaki # nie zamienią się w nagłówki, ale tekst zostanie czytelny). Odpowiedź kolegi (wypełniony szablon i voiceflow.log) wklej Claude'owi, tak jak log czerwonego builda.
 
 Gotowa treść wiadomości dla kolegi (co zrobić po stronie Maca): `packaging/macos/WIADOMOSC-DLA-TESTERA.md`.
 
