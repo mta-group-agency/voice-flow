@@ -10,6 +10,8 @@
 
 ---
 
+- 2026-09-28 · **Intencja:** wypuścić poprawki dla Windows, zanim Mac przejdzie testy · **Zrobiono:** workflow Maca dokleja zip do release'u tylko przy MAC_RELEASE=true; mac-port scalony do main (ff); release v1.4.0 tylko z VoiceFlow.exe (poprawka logu, model Groq, Test zapisuje klucz, AI domyślnie wyłączone dla nowych, crashe przy Quit, okna na laptopach) · **Użyto:** /orchestrator, /release, Agent sonnet/haiku, gh CLI · **Skill?:** —
+
 - 2026-09-25 · **Intencja:** poprawki po pierwszym teście na Macu (Anita) · **Zrobiono:** wycofany model Groq llama-3.3 zastąpiony openai/gpt-oss-120b (domyślnie, migracja, leczenie przy Test i Save); nowe instalacje tylko Whisper, AI Text Processing wyłączone; Test zapisuje sprawdzony klucz; Mac: hotkey nie aktywuje okna VoiceFlow (QT_MAC_SET_RAISE_PROCESS=0) i wklejanie wraca do aplikacji docelowej; crashe przy Quit z wątkami w tle; okno powitalne i "Nowa wersja" mieszczą się na małych ekranach, czytelne linki; review 9/10 · **Użyto:** /orchestrator, Agent opus/sonnet/haiku, tester, reviewer, gh CLI · **Skill?:** —
 
 - 2026-09-25 · **Intencja:** wersja VoiceFlow na Maca do testu u kolegi · **Zrobiono:** porzucony pomocnik błędów F2 (git stash); warstwa voiceflow/platform (Windows bez zmian, Mac: ścieżki, blokada, LaunchAgent, Cmd+V, uprawnienia Dostępność/Monitorowanie wprowadzania z promptem systemowym); packaging/macos (spec, build.sh, podpis ad-hoc, zip ~90 MB); GitHub Actions macos-14 z testem uruchomienia zbudowanej aplikacji (zielony); instrukcja dla właściciela i wiadomość dla testera; logi także na terminal; review 9/10 po 5 rundach · **Użyto:** /orchestrator, Agent opus/sonnet/haiku, tester x8, reviewer x5, gh CLI · **Skill?:** —
