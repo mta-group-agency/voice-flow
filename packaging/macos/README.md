@@ -43,12 +43,24 @@ Poza tym katalogiem:
   Macu); jeśli dalej działa, to wynik pozytywny (pierwszy start blokuje się w `exec()` na oknie
   powitalnym albo prośbie o uprawnienia), krok gasi proces i przechodzi dalej; zawsze drukuje
   w logu przebiegu plik `voiceflow.log` z tego uruchomienia, wrzuca zip jako artefakt (14 dni)
-  zawsze, a na tagu `v*` dokleja go do release'u tego taga (czeka do ~10 minut, aż release się
-  pojawi, bo `/release` na Windowsie tworzy go ręcznie i może to zrobić już po wypchnięciu taga;
-  jeśli po tym czasie release nadal nie istnieje, tworzy szkic).
+  zawsze. Doklejenie zipa do release'u taga (czeka do ~10 minut, aż release się pojawi, bo
+  `/release` na Windowsie tworzy go ręcznie i może to zrobić już po wypchnięciu taga; jeśli po tym
+  czasie release nadal nie istnieje, tworzy szkic) dzieje się tylko, gdy zmienna repo
+  `MAC_RELEASE` jest ustawiona na `true`, patrz sekcja niżej.
 - `requirements/macos.txt`: zależności Pythona na Macu (PyAudio wymaga wcześniej `brew install portaudio`;
   zawiera też `pyobjc-framework-Quartz` i `pyobjc-framework-ApplicationServices`, potrzebne przez
   darwinowy backend `pynput`).
+
+## Doklejanie zipa Maca do release'u (MAC_RELEASE)
+
+Zip Maca doklejany jest do release'u na tagu tylko wtedy, gdy zmienna repo `MAC_RELEASE` jest
+ustawiona na `true`: `gh variable set MAC_RELEASE --body true --repo mta-group-agency/voice-flow`.
+Dopóki jej nie ma (albo jest inna niż `true`), tag odpala tylko build i artefakt w Actions, release
+zostaje sam z plikiem Windowsa.
+
+Dla już opublikowanego release'u zip da się doczepić później: odpal workflow ręcznie dla taga
+(Actions > Build macOS > Run workflow) albo `gh release upload vX.Y.Z VoiceFlow-macos-arm64.zip`
+z artefaktu pobranego wcześniej.
 
 ## Dla właściciela: jak odpalić build i wysłać go koledze (Windows, bez programowania)
 

@@ -199,6 +199,11 @@ Checklista do przekazania (bez tego nie wydajemy):
 
 ### F6. Release obu wersji
 - `/release`: bump, build `.exe` lokalnie, tag, `gh release create` z `.exe`; CI po tagu dokleja zip Maca,
+  ale tylko gdy zmienna repo `MAC_RELEASE` jest ustawiona na `true`
+  (`gh variable set MAC_RELEASE --body true --repo mta-group-agency/voice-flow`); dopóki jej nie ma,
+  tag odpala sam build Maca (artefakt w Actions), bez dotykania release'u,
+- dla już opublikowanego release'u zip da się doczepić później: odpalić workflow ręcznie dla taga
+  albo `gh release upload vX.Y.Z VoiceFlow-macos-arm64.zip` z artefaktu,
 - sekcja „Instalacja na Macu" w notatkach release'u (odblokowanie w Gatekeeperze: macOS 14
   i starsze prawy klik > Otwórz, macOS 15 i nowsze Ustawienia systemowe > Prywatność i ochrona >
   „Otwórz mimo to"; uprawnienia; co zrobić, gdy po aktualizacji hotkey przestał działać:
